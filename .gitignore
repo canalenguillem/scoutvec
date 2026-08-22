@@ -1,4 +1,7 @@
 .venv/
 data/raw/
 *.parquet
+# vectors.parquet SI se versiona: son 550 KB y permiten arrancar el proyecto
+# entero sin descargar los 14 GB de StatsBomb ni ejecutar el pipeline
+!vectors.parquet
 __pycache__/
