@@ -1,0 +1,15 @@
+anyio==4.14.2
+click==8.4.2
+fastapi==0.141.1
+h11==0.16.0
+numpy==2.4.6
+polars-lts-cpu==1.33.1
+polars-runtime-32==1.43.2
+pyarrow==25.0.1
+pydantic==2.13.4
+pydantic_core==2.46.4
+pymysql==1.1.1
+qdrant-client==1.12.1
+starlette==1.6.0
+tqdm==4.70.0
+uvicorn==0.52.4
