@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Radar from './Radar'
 import { LABEL_FULL, ask, compare, getMeta, getSimilar, searchPlayers } from './api'
 import { decidirSeleccion } from './select'
@@ -27,6 +27,7 @@ export default function App() {
   const [pregunta, setPregunta] = useState('')
   const [respuesta, setRespuesta] = useState<AskResponse | null>(null)
   const [pensando, setPensando] = useState(false)
+  const panelRespuesta = useRef<HTMLElement | null>(null)
 
   // los resultados vienen de la consulta en lenguaje natural si la hay,
   // y si no del jugador de referencia
@@ -82,6 +83,11 @@ export default function App() {
       setRespuesta(r)
       // el radar necesita al menos un perfil para no quedarse vacio
       setPicked(r.results.length ? [r.results[0].id] : [])
+      // en movil la respuesta nace fuera de la pantalla; sin esto parece
+      // que no ha pasado nada
+      requestAnimationFrame(() =>
+        panelRespuesta.current?.scrollIntoView({ behavior: 'smooth',
+                                                 block: 'start' }))
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
@@ -124,7 +130,7 @@ export default function App() {
         </div>
       </form>
 
-      <section className="controls" aria-label="Filters">
+      {!respuesta && <section className="controls" aria-label="Filters">
         <label>Player
           <input value={q} onChange={e => setQ(e.target.value)}
                  placeholder="Search a name…" list="hits" />
@@ -154,9 +160,9 @@ export default function App() {
           <input type="range" min="3" max="20" value={k}
                  onChange={e => setK(Number(e.target.value))} />
         </label>
-      </section>
+      </section>}
 
-      {hits.length > 0 && (
+      {!respuesta && hits.length > 0 && (
         <section className="hits" aria-label="Search results">
           {hits.slice(0, 6).map(h => (
             <button key={h.id} onClick={() => choose(h)}
@@ -169,33 +175,14 @@ export default function App() {
 
       {anchor && (
         <div className="split">
-          <section aria-label="Nearest neighbours">
+          <section aria-label="Nearest neighbours" ref={panelRespuesta}>
             {respuesta ? (
               <>
-                <h2>Answer</h2>
-                <p className="muted small">{respuesta.query.summary}</p>
-                {/* lo que el modelo pidio realmente. El perfil se deriva de
-                    estos ajustes, asi que no pueden discrepar. */}
-                <ul className="adjustments">
-                  {respuesta.query.adjustments.map(a => (
-                    <li key={a.feature}>
-                      <code>{LABEL_FULL[a.feature] ?? a.feature}</code>
-                      <b>{Math.round(a.value * 100)}</b>
-                      <span className="muted">{a.why}</span>
-                    </li>
-                  ))}
-                  {!respuesta.query.adjustments.length &&
-                    <li className="muted">No dimension was adjusted.</li>}
-                </ul>
+                <h2>{resultados.length} players</h2>
                 <p className="muted small">
-                  {respuesta.query.role && <>role {respuesta.query.role} · </>}
-                  {respuesta.query.league && <>{respuesta.query.league} · </>}
-                  {respuesta.query.model}
-                  {' '}
-                  <button type="button" className="linkish"
-                          onClick={() => setRespuesta(null)}>
-                    back to player search
-                  </button>
+                  {respuesta.query.summary}
+                  {respuesta.query.role && <> · role {respuesta.query.role}</>}
+                  {respuesta.query.league && <> · {respuesta.query.league}</>}
                 </p>
               </>
             ) : (
@@ -229,6 +216,36 @@ export default function App() {
               {!resultados.length && <li className="muted small">
                 No players match.</li>}
             </ol>
+
+            {respuesta && (
+              <details className="why" open>
+                <summary>Why these players</summary>
+                {/* el perfil se deriva de estos ajustes, asi que el texto
+                    no puede describir un movimiento que no ocurrio */}
+                <ul className="adjustments">
+                  {respuesta.query.adjustments.map(a => (
+                    <li key={a.feature}>
+                      <code>{LABEL_FULL[a.feature] ?? a.feature}</code>
+                      <b>{Math.round(a.value * 100)}</b>
+                      <span className="muted">{a.why}</span>
+                    </li>
+                  ))}
+                  {!respuesta.query.adjustments.length &&
+                    <li className="muted">No dimension was adjusted.</li>}
+                </ul>
+                <p className="muted small">
+                  Everything not listed sits at the 50th percentile.
+                  {' '}Translated by {respuesta.query.model}.
+                </p>
+              </details>
+            )}
+
+            {respuesta && (
+              <button type="button" className="linkish"
+                      onClick={() => setRespuesta(null)}>
+                ← back to player search
+              </button>
+            )}
           </section>
 
           <section aria-label="Profile comparison">

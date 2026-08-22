@@ -187,3 +187,28 @@ td { font-variant-numeric: tabular-nums; }
   background: none; border: 0; color: var(--series-1);
   text-decoration: underline;
 }
+
+/* la explicacion va DESPUES de los jugadores: en movil, poner el "por que"
+   antes que la respuesta hace que la respuesta parezca no existir */
+.why {
+  margin: 14px 0 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.why > summary {
+  cursor: pointer; font-size: 13px; color: var(--text-secondary);
+  list-style: none;
+}
+.why > summary::-webkit-details-marker { display: none; }
+.why > summary::before { content: '▾ '; color: var(--text-muted); }
+.why:not([open]) > summary::before { content: '▸ '; }
+
+/* en movil los controles y el radar deben respirar */
+@media (max-width: 640px) {
+  .wrap { padding: 20px 14px 48px; }
+  .ask-row { flex-wrap: wrap; }
+  .ask-row input { min-width: 0; }
+  .ask-row button { width: 100%; }
+  .row { grid-template-columns: 14px 44px 1fr; }
+  .row .meta { grid-column: 2 / -1; }
+}
