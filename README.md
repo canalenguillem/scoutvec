@@ -115,6 +115,23 @@ a third of the matches per league make every per-90 noisier and every
 percentile coarser. Reported rather than hidden — the method transfers, the
 sample size does not.
 
+### Why this data is not easy to reproduce right now
+
+In January 2026 Stats Perform ended FBref's licence to Opta data, and every
+advanced statistic was removed from the site. Progressive passes, aerial duel
+rates, pass completion under pressure, touch zones — the metrics this vector
+is built from — stopped being freely available for current seasons.
+
+The women's game lost the most. FBref had carried Opta data for ten women's
+competitions since 2022, and that coverage disappeared overnight.
+
+So the seventeen dimensions here cannot currently be rebuilt from any free
+source for a live season. Understat still publishes shots and expected goals
+for the men's big five, which covers roughly one of the seventeen. Everything
+else is commercial. That is a real limitation of this project — it is anchored
+to whatever StatsBomb chooses to open — and it is also why a complete,
+licensed, four-league women's vector space is worth having.
+
 ## The vector
 
 Taking `men-2015-16` as the worked example: 1,419 outfield players with 600+
