@@ -310,8 +310,8 @@ Phase 6 — Evidence clips
 
 Phase 7 — Ship
   [x] English README — result first, then method, then limitations
-  [ ] Screenshots (needs a browser this machine cannot run; capture by hand
-      from localhost:5180 into docs/ and uncomment the block in README.md)
+  [x] Screenshots — taken by hand from the deployed site (this machine has no
+      browser Playwright can launch), cropped into docs/
   [ ] Architecture diagram
   [ ] Write-up: what the data taught me, what the model can't do
 ```
