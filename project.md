@@ -308,12 +308,12 @@ Phase 6 — Evidence clips
   [ ] Similarity drivers → match events → timestamps → ffmpeg
   [ ] The differentiator: nobody in this space ships video
 
-Phase 7 — Ship
+Phase 7 — Ship                                               [DONE]
   [x] English README — result first, then method, then limitations
   [x] Screenshots — taken by hand from the deployed site (this machine has no
       browser Playwright can launch), cropped into docs/
-  [ ] Architecture diagram
-  [ ] Write-up: what the data taught me, what the model can't do
+  [x] Architecture diagram (mermaid, renders on GitHub)
+  [x] WRITEUP.md — what the data taught me, what the model can't do
 ```
 
 ---

@@ -214,6 +214,56 @@ paths are verified to return identical neighbours.
 
 Interactive API docs at `http://localhost:8000/docs`.
 
+## Architecture
+
+Two halves that never run at the same time. The pipeline is batch work you run
+once; the services are what stays up.
+
+```mermaid
+flowchart TB
+    subgraph build["Pipeline — run once, ~4 min"]
+        direction LR
+        SB[("StatsBomb open data<br/>local sparse clone")]
+        ING["ingest.py<br/>4 leagues, one at a time"]
+        FEA["features.py<br/>per-90s, ratios, possession"]
+        VEC["vectors.py<br/>global percentiles<br/>possession residualised"]
+        PQ[("vectors.parquet<br/>1,419 x 17")]
+        SB --> ING --> FEA --> VEC --> PQ
+    end
+
+    subgraph run["Services — docker compose"]
+        direction TB
+        SEED["seed<br/>loads both stores, exits"]
+        MDB[("MariaDB<br/>metadata, filters, listings")]
+        QD[("Qdrant<br/>vectors + payload filters")]
+        API["backend — FastAPI"]
+        NGX["frontend — nginx<br/>serves the SPA, proxies /api"]
+        SEED --> MDB
+        SEED --> QD
+        API --> MDB
+        API --> QD
+        NGX --> API
+    end
+
+    PQ --> SEED
+    OAI["OpenAI<br/>plain language to structured query"]
+    API -. "/ask only" .-> OAI
+    USR(["browser"]) --> NGX
+
+    classDef store fill:#1baf7a22,stroke:#1baf7a
+    classDef ext fill:#eda10022,stroke:#eda100
+    class PQ,MDB,QD store
+    class SB,OAI ext
+```
+
+Only nginx publishes a port. The backend, MariaDB and Qdrant talk over the
+compose network, so nothing else on the host can collide with them and nothing
+but the frontend is reachable from outside.
+
+`SCOUTVEC_BACKEND=numpy` cuts MariaDB and Qdrant out entirely and reads
+`vectors.parquet` into memory — the development path, and the reference the
+store-backed path is checked against.
+
 ## Layout
 
 ```
@@ -234,8 +284,9 @@ web/              React + Vite + TypeScript; the radar is hand-written SVG,
                   no chart library. nginx serves it and proxies /api.
 ```
 
-`project.md` holds the full engineering log — the decisions, the measurements,
-and the mistakes that cost real time.
+[`WRITEUP.md`](WRITEUP.md) is the long-form version: what the data taught me,
+the two wrong turns worth reading about, and what the model cannot do.
+`project.md` is the running engineering log behind it.
 
 ## Data
 
