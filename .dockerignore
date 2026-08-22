@@ -1,0 +1,11 @@
+.git
+.venv
+web/node_modules
+web/dist
+web/.ssrcheck
+data/
+*.parquet
+__pycache__/
+**/__pycache__/
+*.ipynb
+docs/
