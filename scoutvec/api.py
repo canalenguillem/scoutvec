@@ -50,6 +50,37 @@ class Vecino(Jugador):
     sim: float
 
 
+class Pregunta(BaseModel):
+    q: str = Field(description="consulta libre",
+                   json_schema_extra={"example":
+                       "un central que saque el balon jugado y gane de cabeza"})
+
+
+class Ajuste(BaseModel):
+    feature: str
+    value: float
+    why: str = Field(description="las palabras de la peticion que lo justifican")
+
+
+class ConsultaEstructurada(BaseModel):
+    adjustments: list[Ajuste]
+    profile: dict[str, float] = Field(
+        description="derivado de adjustments; lo no ajustado vale 0.5")
+    role: str | None
+    league: str | None
+    k: int
+    summary: str
+    model: str
+    prompt_version: str
+
+
+class Respuesta(BaseModel):
+    """La consulta estructurada viaja con los resultados: si los jugadores no
+    convencen, se ve exactamente que se pidio. Eso es la explicabilidad."""
+    query: ConsultaEstructurada
+    results: list["Vecino"]
+
+
 class Objetivo(BaseModel):
     profile: dict[str, float] = Field(
         default_factory=dict,
@@ -119,11 +150,19 @@ class BackendNumpy:
                 break
         return out
 
-    def objetivo(self, vec, k, keep):
+    def objetivo(self, vec, k, keep, league=None):
         import numpy as np
         q = np.asarray(vec, dtype=float)
-        return [{**self._fila(j), "sim": round(s, 4)}
-                for j, s in self.sim.vecinos(q, k, keep)]
+        # se pide de mas porque la liga se filtra despues del ranking
+        holgura = k if league is None else min(len(self.e.ids), k * 12)
+        out = []
+        for j, s in self.sim.vecinos(q, holgura, keep):
+            if league and self.e.leagues[j] != league:
+                continue
+            out.append({**self._fila(j), "sim": round(s, 4)})
+            if len(out) == k:
+                break
+        return out
 
 
 class BackendStores:
@@ -226,10 +265,11 @@ class BackendStores:
             query_filter=self._filtro(keep, league), with_payload=False).points
         return self._hidratar([p for p in res if p.id != pid][:k])
 
-    def objetivo(self, vec, k, keep):
+    def objetivo(self, vec, k, keep, league=None):
+        # aqui la liga entra en el filtro del indice, no despues
         res = self.qc.query_points(
             self.store.COLECCION, query=list(map(float, vec)), limit=k,
-            query_filter=self._filtro(keep, None), with_payload=False).points
+            query_filter=self._filtro(keep, league), with_payload=False).points
         return self._hidratar(res)
 
 
@@ -308,6 +348,30 @@ def similar_target(o: Objetivo):
         raise HTTPException(422, f"el espacio son percentiles en [0,1]: {fuera}")
     vec = [o.profile.get(f, 0.5) for f in FEATURES]
     return backend().objetivo(vec, o.k, _rol(o.role))
+
+
+@app.post("/ask", response_model=Respuesta,
+          summary="Consulta en lenguaje natural")
+def ask(p: Pregunta):
+    """El modelo traduce a consulta estructurada; la busqueda la ejecuta
+    el mismo codigo determinista que el resto de la API."""
+    from scoutvec import nl
+
+    if not p.q.strip():
+        raise HTTPException(422, "la pregunta esta vacia")
+    if len(p.q) > 500:
+        raise HTTPException(422, "pregunta demasiado larga (max 500)")
+
+    try:
+        q = nl.traducir(p.q)
+    except nl.SinClave as e:
+        raise HTTPException(503, str(e))
+    except Exception as e:                      # noqa: BLE001
+        raise HTTPException(502, f"el traductor fallo: {type(e).__name__}: {e}")
+
+    vec = [q["profile"][f] for f in FEATURES]
+    res = backend().objetivo(vec, q["k"], _rol(q["role"]), q["league"])
+    return {"query": q, "results": res}
 
 
 @app.get("/compare", response_model=list[Perfil], summary="Perfiles lado a lado")
