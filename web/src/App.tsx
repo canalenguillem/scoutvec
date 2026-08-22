@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import Radar from './Radar'
-import { LABEL_FULL, compare, getMeta, getSimilar, searchPlayers } from './api'
+import { LABEL_FULL, ask, compare, getMeta, getSimilar, searchPlayers } from './api'
 import { decidirSeleccion } from './select'
-import type { Meta, Neighbour, Player, Profile } from './types'
+import type { AskResponse, Meta, Neighbour, Player, Profile } from './types'
 
 // slots categoricos en orden fijo, nunca ciclados. Validados con
 // scripts/validate_palette.js en claro y oscuro.
@@ -24,6 +24,13 @@ export default function App() {
   const [sameRole, setSameRole] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [view, setView] = useState<'chart' | 'table'>('chart')
+  const [pregunta, setPregunta] = useState('')
+  const [respuesta, setRespuesta] = useState<AskResponse | null>(null)
+  const [pensando, setPensando] = useState(false)
+
+  // los resultados vienen de la consulta en lenguaje natural si la hay,
+  // y si no del jugador de referencia
+  const resultados: Neighbour[] = respuesta ? respuesta.results : neighbours
 
   useEffect(() => { getMeta().then(setMeta).catch(e => setErr(e.message)) }, [])
 
@@ -61,7 +68,25 @@ export default function App() {
   function choose(p: Player) {
     setAnchor(p)
     setPicked([p.id])
+    setRespuesta(null)      // volver al modo jugador-de-referencia
     setErr(null)
+  }
+
+  async function preguntar(e: React.FormEvent) {
+    e.preventDefault()
+    if (!pregunta.trim() || pensando) return
+    setPensando(true)
+    setErr(null)
+    try {
+      const r = await ask(pregunta)
+      setRespuesta(r)
+      // el radar necesita al menos un perfil para no quedarse vacio
+      setPicked(r.results.length ? [r.results[0].id] : [])
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setPensando(false)
+    }
   }
 
   function toggle(id: number) {
@@ -86,6 +111,18 @@ export default function App() {
           Position is not in the vector.
         </p>
       </header>
+
+      <form className="ask" onSubmit={preguntar}>
+        <label htmlFor="ask-input">Ask in plain language</label>
+        <div className="ask-row">
+          <input id="ask-input" value={pregunta} disabled={pensando}
+                 onChange={e => setPregunta(e.target.value)}
+                 placeholder="a centre-back who plays out from the back and wins headers" />
+          <button type="submit" disabled={pensando || !pregunta.trim()}>
+            {pensando ? 'Thinking…' : 'Ask'}
+          </button>
+        </div>
+      </form>
 
       <section className="controls" aria-label="Filters">
         <label>Player
@@ -133,13 +170,45 @@ export default function App() {
       {anchor && (
         <div className="split">
           <section aria-label="Nearest neighbours">
-            <h2>Nearest to {anchor.name}</h2>
-            <p className="muted small">
-              {anchor.team} · {anchor.league} · {anchor.role} ·
-              {' '}{anchor.minutes.toLocaleString()} min
-            </p>
+            {respuesta ? (
+              <>
+                <h2>Answer</h2>
+                <p className="muted small">{respuesta.query.summary}</p>
+                {/* lo que el modelo pidio realmente. El perfil se deriva de
+                    estos ajustes, asi que no pueden discrepar. */}
+                <ul className="adjustments">
+                  {respuesta.query.adjustments.map(a => (
+                    <li key={a.feature}>
+                      <code>{LABEL_FULL[a.feature] ?? a.feature}</code>
+                      <b>{Math.round(a.value * 100)}</b>
+                      <span className="muted">{a.why}</span>
+                    </li>
+                  ))}
+                  {!respuesta.query.adjustments.length &&
+                    <li className="muted">No dimension was adjusted.</li>}
+                </ul>
+                <p className="muted small">
+                  {respuesta.query.role && <>role {respuesta.query.role} · </>}
+                  {respuesta.query.league && <>{respuesta.query.league} · </>}
+                  {respuesta.query.model}
+                  {' '}
+                  <button type="button" className="linkish"
+                          onClick={() => setRespuesta(null)}>
+                    back to player search
+                  </button>
+                </p>
+              </>
+            ) : (
+              <>
+                <h2>Nearest to {anchor.name}</h2>
+                <p className="muted small">
+                  {anchor.team} · {anchor.league} · {anchor.role} ·
+                  {' '}{anchor.minutes.toLocaleString()} min
+                </p>
+              </>
+            )}
             <ol className="neighbours">
-              {neighbours.map(n => {
+              {resultados.map(n => {
                 const at = picked.indexOf(n.id)
                 return (
                   <li key={n.id}>
@@ -157,8 +226,8 @@ export default function App() {
                   </li>
                 )
               })}
-              {!neighbours.length && <li className="muted small">
-                No players match these filters.</li>}
+              {!resultados.length && <li className="muted small">
+                No players match.</li>}
             </ol>
           </section>
 

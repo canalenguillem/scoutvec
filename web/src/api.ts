@@ -1,4 +1,4 @@
-import type { Meta, Neighbour, Player, Profile, SimilarOpts } from './types'
+import type { AskResponse, Meta, Neighbour, Player, Profile, SimilarOpts } from './types'
 
 const base = '/api'
 
@@ -40,6 +40,24 @@ export const getSimilar = (id: number, { k = 8, role, sameRole, league }: Simila
 }
 
 export const compare = (ids: number[]) => get<Profile[]>(`/compare?ids=${ids.join(',')}`)
+
+export async function ask(q: string): Promise<AskResponse> {
+  const r = await fetch(`${base}/ask`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ q }),
+  })
+  if (!r.ok) {
+    let detalle = r.statusText
+    try {
+      detalle = (await r.json()).detail ?? detalle
+    } catch {
+      // cuerpo no JSON
+    }
+    throw new Error(`${r.status} ${detalle}`)
+  }
+  return r.json() as Promise<AskResponse>
+}
 
 // cortas a proposito: 17 ejes en un circulo no admiten nombres largos sin
 // solaparse, y radar-check.mjs lo verifica

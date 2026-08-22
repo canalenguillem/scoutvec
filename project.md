@@ -144,6 +144,24 @@ free. It is a partial fix: 0.450 is still far from 0.000, because
 residualising removes only the linear component and because team style has
 dimensions that possession does not capture.
 
+**Do not let a model emit an answer and its explanation separately.** The
+first version of the language layer asked for a full 17-dimension profile plus
+a sentence describing it. For "un central que saque el balón jugado y gane de
+cabeza" it returned a profile that moved only `aerial_win`, and a sentence
+claiming it had moved `pass_p90` and `prog_pass_p90` as well. Nothing was
+broken — the model simply produced two artefacts that were free to disagree,
+and the one shown to the user was the wrong one.
+
+The fix is structural, not a better prompt: the model now emits only a list of
+adjustments, each with the words from the request that justify it, and the
+profile is *derived* from that list. Prose and profile cannot diverge because
+there is only one source of truth. A test asserts the derived profile equals
+the adjustments.
+
+The same shape applies to any LLM feature: have the model produce the
+structured thing, derive the human-readable thing from it, and never ask for
+both in one breath.
+
 **A 17-axis radar needs its labels measured, not eyeballed.** This machine has
 no browser Playwright can launch — the cached Chromium is missing 17 shared
 libraries — so "render it and look at it" was not available. The substitute:
@@ -279,9 +297,12 @@ Phase 4 — Interface                                          [DONE]
   [x] Docker Compose: frontend, backend, mariadb, qdrant, seed —
       one published port, nginx proxying /api
 
-Phase 5 — Natural language layer
-  [ ] LLM: query → structured filters + target profile
-  [ ] Return the structured query alongside results (explainability)
+Phase 5 — Natural language layer                             [DONE]
+  [x] OpenAI structured outputs: query → adjustments + role/league/k
+  [x] Profile derived from adjustments, so prose cannot contradict it
+  [x] Structured query returned with the results (explainability)
+  [x] 14 offline tests that need no API key and cost nothing
+  [x] Plain-language box in the UI
 
 Phase 6 — Evidence clips
   [ ] Similarity drivers → match events → timestamps → ffmpeg

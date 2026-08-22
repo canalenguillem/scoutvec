@@ -27,10 +27,15 @@ they are Insigne, Ben Arfa and Papu Gómez. Because the vector is adjusted for
 team possession, the question it answers is *"who plays like this at a club that
 does not have 67% of the ball"*, which is the question a scout actually has.
 
-<!-- Screenshots: open http://localhost:5180 and capture the app, then drop the
-     files in docs/ and uncomment. Two are enough: the radar with 3-4 players
-     selected, and the same comparison in table view.
+<!-- Screenshots. Start the stack (`docker compose up -d`), open
+     http://localhost:8090, then save two images into docs/ and delete this
+     comment along with the surrounding markers:
+
+       docs/radar.png  — a player selected and 3-4 neighbours added, chart view
+       docs/table.png  — the same comparison switched to table view
+
 ![scoutvec comparing four players](docs/radar.png)
+![the same comparison as a table](docs/table.png)
 -->
 
 ## What it does
@@ -44,6 +49,34 @@ does not have 67% of the ball"*, which is the question a scout actually has.
   drive.
 - **Side-by-side comparison** — up to four players on a 17-axis percentile
   radar, with a table view of the same numbers.
+- **Plain-language search** — *"un central que saque el balón jugado y gane de
+  cabeza"* returns Laporte and Chiellini; *"a poacher who lives in the box and
+  never defends"* returns the poachers. Ask in any language.
+
+### How the language layer stays honest
+
+The model never answers *who is similar to whom*. It only translates the
+request into a structured query — a set of percentile adjustments plus optional
+role and league filters — and the same deterministic vector search that powers
+every other endpoint executes it. The structured query comes back with the
+results:
+
+```
+> un central que saque el balón jugado y gane de cabeza
+  role=CB  k=8
+    prog_pass_p90   0.70   <- "saque el balón jugado"
+    aerial_win      0.70   <- "gane de cabeza"
+  0.921 Aymeric Laporte    (Athletic Club, CB)
+  0.918 Giorgio Chiellini  (Juventus, CB)
+```
+
+Every adjustment carries the words from the request that justify it, and the
+17-dimension profile is *derived* from those adjustments — anything not listed
+stays at 0.5. That is deliberate: an earlier version had the model emit the
+profile and the prose separately, and it produced an explanation claiming it
+had moved two dimensions it never touched. Two sources of truth can disagree;
+one cannot. If the players are wrong, you can see precisely which dimension
+was misread.
 
 ## The vector
 
@@ -133,9 +166,12 @@ python -m scoutvec.similarity  # nearest neighbours in the terminal
 StatsBomb or building anything:
 
 ```bash
+cp .env.example .env           # add your OPENAI_API_KEY for /ask
 python preflight.py            # checks the published port is free
 docker compose up -d --build   # http://localhost:8090
 ```
+
+Everything except `/ask` works without an OpenAI key; `/ask` returns 503.
 
 Four services. **Only the frontend publishes a port**; the backend, MariaDB and
 Qdrant talk over the compose network and cannot collide with anything else on
@@ -178,6 +214,7 @@ paths are verified to return identical neighbours.
 | `GET /players/{id}` | one player's 17-dimension profile |
 | `GET /similar/{id}` | nearest neighbours, `?role=`, `?same_role=`, `?league=` |
 | `POST /similar/target` | hand-built profile, no reference player |
+| `POST /ask` | plain-language query -> structured query + results |
 | `GET /compare?ids=` | several profiles in one call |
 
 Interactive API docs at `http://localhost:8000/docs`.
@@ -196,6 +233,7 @@ scoutvec/
   vectors.py      global percentiles, possession residualisation, the vector
   similarity.py   cosine search; also runs standalone as a CLI
   store.py        MariaDB schema + Qdrant collection + the seed
+  nl.py           plain language -> structured query (OpenAI)
   api.py          FastAPI, with pluggable numpy / stores backends
 web/              React + Vite + TypeScript; the radar is hand-written SVG,
                   no chart library. nginx serves it and proxies /api.
