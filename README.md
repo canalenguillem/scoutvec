@@ -189,8 +189,11 @@ fixed — see limitations.
   enough for a 600-minute cut, not for anything finer.
 - **Event data only.** No tracking, so no off-ball movement and no pitch
   control. A player's value without the ball is largely invisible here.
-- **One season, 2015/16.** The architecture is season-agnostic — the source is
-  two constants — but this is a portfolio piece, not a live scouting tool.
+- **Not a live tool, and cannot easily become one.** The architecture is
+  season-agnostic — a dataset is one dict entry — but no free source has
+  published these seventeen dimensions for a season in progress since January
+  2026. Making this current means buying event data.
+
 - **Goalkeepers are excluded.** Their event profile is not comparable and would
   distort the percentile distribution.
 
