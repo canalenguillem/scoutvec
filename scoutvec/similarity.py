@@ -90,6 +90,40 @@ def vecinos(q, k, keep=None, salta=None, dataset=None):
     return out
 
 
+def por_restricciones(objetivos, k, keep=None, dataset=None):
+    """Ordena por las dimensiones que se pidieron, y solo por esas.
+
+    El coseno contra un perfil de 17 dimensiones con 15 en 0.5 no sirve para
+    una peticion parcial: esas 15 aportan el 79% de la norma, asi que el
+    ranking acaba midiendo "quien es mas normal en general" en vez de lo que
+    se pregunto. Medido: para "pase alto y sereno bajo presion" devolvia una
+    central con percentil 0.41 de acierto de pase.
+
+    Aqui el objetivo solo marca la DIRECCION. Un objetivo por encima de 0.5
+    significa "cuanto mas alto mejor"; por debajo, "cuanto mas bajo mejor".
+    Se puntua la media de la intensidad en esa direccion.
+    """
+    e = load(dataset)
+    idx = [(FEATURES.index(f), v) for f, v in objetivos.items() if f in FEATURES]
+    if not idx:
+        raise ValueError("no hay ninguna dimension que ordenar")
+
+    cols = np.array([j for j, _ in idx])
+    sube = np.array([v > 0.5 for _, v in idx])
+    P = e.P[:, cols]
+    fuerza = np.where(sube, P, 1 - P).mean(axis=1)
+
+    orden = np.argsort(-fuerza)
+    out = []
+    for j in orden:
+        if keep is not None and e.roles[j] not in keep:
+            continue
+        out.append((int(j), float(fuerza[j])))
+        if len(out) == k:
+            break
+    return out
+
+
 def _rank(q, k, keep, salta=None, dataset=None):
     e = load(dataset)
     out = [(e.names[j], e.leagues[j], e.roles[j], round(s, 4))

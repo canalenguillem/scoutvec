@@ -65,6 +65,19 @@ results:
   0.918 Giorgio Chiellini  (Juventus, CB)
 ```
 
+Ranking happens **only on the dimensions the request actually named**. Feeding
+a mostly-neutral 17-dimension profile into a cosine search does not work: with
+fifteen dimensions left at 0.5, about 79% of the similarity measures "be
+average at everything else", and the answer to "good with her feet" came back
+with a defender in the 41st percentile for pass completion. The target sets a
+direction — above 0.5 means higher is better, below means lower — and players
+are ranked by their strength in that direction.
+
+Requests the seventeen dimensions cannot express — a goalkeeper, an age, a
+market value — come back as *unanswerable*, with the reason, and no results.
+The space has no goalkeepers in it at all, so answering that question with
+centre-backs would be a quiet lie.
+
 Every adjustment carries the words from the request that justify it, and the
 17-dimension profile is *derived* from those adjustments — anything not listed
 stays at 0.5. That is deliberate: an earlier version had the model emit the

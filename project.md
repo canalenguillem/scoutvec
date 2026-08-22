@@ -164,6 +164,40 @@ populations cannot share an index without silently comparing incomparable
 numbers. The migration drops and recreates `players`, which is derived, and
 never touches `users`, which is not.
 
+**Cosine to a mostly-neutral target ranks the wrong thing.** The
+plain-language layer emits a few adjustments and leaves the other dimensions
+at 0.5, and the first version fed that as a 17-dimension vector into a cosine
+search. For "a centre-back good with her feet who keeps the ball under
+pressure" it returned a defender in the 41st percentile for pass completion,
+while the players who actually topped both requested dimensions did not appear
+at all.
+
+The arithmetic: fifteen dimensions at 0.5 and two at 0.7 give a squared norm
+of 15(0.25) + 2(0.49) = 4.73, of which the two requested dimensions contribute
+0.98 — about 21%. The other 79% of the similarity is measuring "be close to
+average at everything else". The ranking answered a question nobody asked.
+
+The fix is to rank only on the dimensions that were actually specified, using
+the target to set a direction rather than a point: above 0.5 means higher is
+better, below means lower is better, and the score is the mean strength in
+that direction. Same query now returns players at 1.00 and 0.99. It also
+works unchanged for "never defends", where the wanted direction is down.
+
+Worth noting *why* the bug survived review: the results looked plausible. They
+were centre-backs, they were plausible centre-backs, and the summary described
+the right intention. Only checking the returned players' actual percentiles in
+the requested dimensions exposed it. A user spotted it from a radar chart
+before any test did.
+
+**Say when a question cannot be answered.** Asked for a goalkeeper who plays
+well with their feet, the system silently returned centre-backs — goalkeepers
+are excluded from the vector space entirely. Inventing a plausible answer to
+an unanswerable question is the worst failure mode a tool like this has,
+because nothing about the output signals it. The translator now emits an
+`unsupported` field for goalkeepers, age, market value, contracts and goals
+scored, the API returns zero results with the reason, and the interface says
+so instead of listing the nearest thing it could find.
+
 **Do not let a model emit an answer and its explanation separately.** The
 first version of the language layer asked for a full 17-dimension profile plus
 a sentence describing it. For "un central que saque el balón jugado y gane de

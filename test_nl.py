@@ -58,6 +58,15 @@ q = sanear({"adjustments": [
 comprueba("perfil y ajustes no pueden discrepar",
           movidas(q), {a["feature"]: a["value"] for a in q["adjustments"]})
 
+# --- peticiones que el espacio no puede responder ---------------------------
+q = sanear({"adjustments": [], "role": None, "league": None, "k": 8,
+            "summary": "s", "unsupported": "no hay porteros en el espacio"})
+comprueba("conserva el motivo de irrespondible",
+          q["unsupported"], "no hay porteros en el espacio")
+comprueba("ausente -> None", sanear({"adjustments": []})["unsupported"], None)
+comprueba("cadena vacia -> None",
+          sanear({"adjustments": [], "unsupported": ""})["unsupported"], None)
+
 # --- pregunta vacia ---------------------------------------------------------
 try:
     traducir("   ")

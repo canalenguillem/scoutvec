@@ -119,6 +119,9 @@ class Ajuste(BaseModel):
 
 class ConsultaEstructurada(BaseModel):
     adjustments: list[Ajuste]
+    unsupported: str | None = Field(
+        default=None,
+        description="la peticion no se puede responder con estas 17 dimensiones")
     profile: dict[str, float] = Field(
         description="derivado de adjustments; lo no ajustado vale 0.5")
     role: str | None
@@ -207,6 +210,18 @@ class BackendNumpy:
             if league and self.e.leagues[j] != league:
                 continue
             out.append({**self._fila(j), "sim": round(s, 4)})
+            if len(out) == k:
+                break
+        return out
+
+    def restricciones(self, objetivos, k, keep, league=None):
+        holgura = k if league is None else min(len(self.e.ids), k * 12)
+        out = []
+        for j, f in self.sim.por_restricciones(objetivos, holgura, keep,
+                                               dataset=self.ds):
+            if league and self.e.leagues[j] != league:
+                continue
+            out.append({**self._fila(j), "sim": round(f, 4)})
             if len(out) == k:
                 break
         return out
@@ -336,6 +351,31 @@ class BackendStores:
             self.coleccion, query=pid, limit=k,
             query_filter=self._filtro(keep, league), with_payload=False).points
         return self._hidratar([p for p in res if p.id != pid][:k])
+
+    def restricciones(self, objetivos, k, keep, league=None):
+        """Ordenar por unas pocas columnas es exactamente lo que sabe hacer
+        una base relacional; Qdrant aqui no aporta nada."""
+        cols = self.store.COLS
+        piezas = [(f"({cols[f]})" if v > 0.5 else f"(1 - {cols[f]})")
+                  for f, v in objetivos.items() if f in cols]
+        if not piezas:
+            raise HTTPException(422, "ninguna dimension valida")
+        fuerza = "(" + " + ".join(piezas) + f") / {len(piezas)}"
+
+        cond, args = ["dataset = %s"], [self.ds]
+        if keep:
+            cond.append(f"role IN ({','.join(['%s'] * len(keep))})")
+            args += sorted(keep)
+        if league:
+            cond.append("league = %s"); args.append(league)
+        con = self._con(); cur = con.cursor()
+        cur.execute(f"SELECT id,name,team,league,role,minutes, {fuerza} AS s "
+                    f"FROM players WHERE {' AND '.join(cond)} "
+                    f"ORDER BY s DESC LIMIT %s", (*args, k))
+        out = [{**self._fila(r), "sim": round(float(r[6]), 4)}
+               for r in cur.fetchall()]
+        con.close()
+        return out
 
     def objetivo(self, vec, k, keep, league=None):
         # aqui la liga entra en el filtro del indice, no despues
@@ -543,8 +583,17 @@ def ask(p: Pregunta, dataset: str | None = None, _=Depends(usuario)):
     except Exception as e:                      # noqa: BLE001
         raise HTTPException(502, f"el traductor fallo: {type(e).__name__}: {e}")
 
-    vec = [q["profile"][f] for f in FEATURES]
-    res = backend(dataset).objetivo(vec, q["k"], _rol(q["role"]), q["league"])
+    # una peticion irrespondible se dice, no se contesta con lo mas parecido
+    if q.get("unsupported"):
+        return {"query": q, "results": []}
+
+    if not q["adjustments"]:
+        raise HTTPException(422, "no he sabido traducir eso a un perfil; "
+                                 "prueba a describir como juega")
+
+    objetivos = {a["feature"]: a["value"] for a in q["adjustments"]}
+    res = backend(dataset).restricciones(objetivos, q["k"], _rol(q["role"]),
+                                         q["league"])
     return {"query": q, "results": res}
 
 

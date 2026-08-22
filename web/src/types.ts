@@ -55,6 +55,8 @@ export interface Adjustment {
  *  respuesta sea auditable: si los jugadores no convencen, se ve por que. */
 export interface StructuredQuery {
   adjustments: Adjustment[]
+  /** Si viene, la peticion no se puede responder con estas 17 dimensiones. */
+  unsupported: string | null
   profile: Record<string, number>
   role: string | null
   league: string | null

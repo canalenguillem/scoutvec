@@ -235,7 +235,18 @@ function Explorer({ sesion, alSalir }:
       {anchor && (
         <div className="split">
           <section aria-label="Nearest neighbours" ref={panelRespuesta}>
-            {respuesta ? (
+            {respuesta?.query.unsupported ? (
+              // decirlo, en vez de devolver lo mas parecido y callar
+              <>
+                <h2>Can't answer that</h2>
+                <p className="unsupported">{respuesta.query.unsupported}</p>
+                <p className="muted small">
+                  The space holds 17 event-derived dimensions for outfield
+                  players only. Describe how someone plays — passing, pressing,
+                  carrying, aerials — rather than who they are.
+                </p>
+              </>
+            ) : respuesta ? (
               <>
                 <h2>{resultados.length} players</h2>
                 <p className="muted small">
@@ -276,7 +287,7 @@ function Explorer({ sesion, alSalir }:
                 No players match.</li>}
             </ol>
 
-            {respuesta && (
+            {respuesta && !respuesta.query.unsupported && (
               <details className="why" open>
                 <summary>Why these players</summary>
                 {/* el perfil se deriva de estos ajustes, asi que el texto

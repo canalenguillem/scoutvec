@@ -246,3 +246,11 @@ td { font-variant-numeric: tabular-nums; }
    separado de los filtros y encima de todo */
 .datasets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 .datasets .chip { font-size: 13px; padding: 7px 14px; }
+
+/* una peticion irrespondible se dice con claridad, no se disimula */
+.unsupported {
+  padding: 10px 12px; margin: 10px 0; font-size: 13px;
+  background: var(--surface-1);
+  border: 1px solid var(--series-4); border-left-width: 3px;
+  border-radius: 7px;
+}

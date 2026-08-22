@@ -59,6 +59,13 @@ average, 0.9 is top 10%, 0.1 is bottom 10%.
 The 17 dimensions:
 {chr(10).join(f"- {f}: {d}" for f, d in GLOSARIO.items())}
 
+The dataset covers OUTFIELD PLAYERS ONLY. Goalkeepers are excluded from the
+vector space entirely, because their event profile is not comparable. If the
+request asks for a goalkeeper, set `unsupported` to a one-sentence explanation
+in the language of the request and leave `adjustments` empty. Do the same for
+anything else the 17 dimensions cannot express: age, height, contract, market
+value, injuries, goals or assists scored, or a specific named club's squad.
+
 Rules:
 - List ONLY the dimensions the request actually implies, in `adjustments`. \
 Everything you do not list stays at 0.5. A profile where everything is extreme \
@@ -106,8 +113,13 @@ def esquema(ligas=None):
                        "enum": [*(ligas or LIGAS), None]},
             "k": {"type": "integer"},
             "summary": {"type": "string"},
+            "unsupported": {
+                "type": ["string", "null"],
+                "description": "por que la peticion no se puede responder con "
+                               "estas 17 dimensiones, o null si si se puede"},
         },
-        "required": ["adjustments", "role", "league", "k", "summary"],
+        "required": ["adjustments", "role", "league", "k", "summary",
+                     "unsupported"],
         "additionalProperties": False,
     }
 
@@ -155,6 +167,8 @@ def sanear(bruto, ligas=None):
         "league": league if league in ligas else None,
         "k": max(1, min(50, int(bruto.get("k") or 8))),
         "summary": str(bruto.get("summary", ""))[:400],
+        "unsupported": (str(bruto["unsupported"])[:300]
+                        if bruto.get("unsupported") else None),
     }
 
 
