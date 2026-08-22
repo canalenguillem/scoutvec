@@ -5,3 +5,6 @@ data/raw/
 # entero sin descargar los 14 GB de StatsBomb ni ejecutar el pipeline
 !vectors.parquet
 __pycache__/
+
+# credenciales locales; .env.example si se versiona
+.env

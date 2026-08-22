@@ -2,6 +2,9 @@
 # hablan por la red interna de compose, asi que no pueden chocar con los
 # contenedores de otros proyectos de la maquina.
 #
+# Credenciales y puerto salen de .env (copia .env.example). Compose lo lee
+# solo si esta junto a este fichero.
+#
 # Comprueba el puerto antes de levantar:  python preflight.py
 
 name: scoutvec
@@ -11,10 +14,10 @@ services:
     image: mariadb:11.4
     restart: unless-stopped
     environment:
-      MARIADB_DATABASE: scoutvec
-      MARIADB_USER: scoutvec
-      MARIADB_PASSWORD: scoutvec
-      MARIADB_ROOT_PASSWORD: rootscoutvec
+      MARIADB_DATABASE: ${MARIADB_DATABASE:?falta en .env}
+      MARIADB_USER: ${MARIADB_USER:?falta en .env}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?falta en .env}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?falta en .env}
     volumes:
       - mariadb-data:/var/lib/mysql
     healthcheck:
@@ -39,9 +42,9 @@ services:
     command: ["python", "-m", "scoutvec.store"]
     environment:
       MARIADB_HOST: mariadb
-      MARIADB_USER: scoutvec
-      MARIADB_PASSWORD: scoutvec
-      MARIADB_DATABASE: scoutvec
+      MARIADB_USER: ${MARIADB_USER:?falta en .env}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?falta en .env}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:?falta en .env}
       QDRANT_URL: http://qdrant:6333
       VECTORS_PATH: /data/vectors.parquet
     volumes:
@@ -57,10 +60,12 @@ services:
     environment:
       SCOUTVEC_BACKEND: stores
       MARIADB_HOST: mariadb
-      MARIADB_USER: scoutvec
-      MARIADB_PASSWORD: scoutvec
-      MARIADB_DATABASE: scoutvec
+      MARIADB_USER: ${MARIADB_USER:?falta en .env}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?falta en .env}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:?falta en .env}
       QDRANT_URL: http://qdrant:6333
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
     depends_on:
       mariadb:
         condition: service_healthy
@@ -78,7 +83,7 @@ services:
     build: ./web
     restart: unless-stopped
     ports:
-      - "8090:80"          # el UNICO puerto publicado
+      - "${FRONTEND_PORT:-8090}:80"   # el UNICO puerto publicado
     depends_on:
       backend:
         condition: service_healthy

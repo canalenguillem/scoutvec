@@ -10,8 +10,20 @@ import socket
 import subprocess
 import sys
 
+def _env(nombre, defecto):
+    """Lee .env sin dependencias: es el mismo fichero que usa compose."""
+    try:
+        for l in open(".env", encoding="utf-8"):
+            l = l.strip()
+            if l.startswith(f"{nombre}=") and not l.startswith("#"):
+                return l.split("=", 1)[1].strip() or defecto
+    except FileNotFoundError:
+        pass
+    return defecto
+
+
 # solo el frontend se publica; backend, mariadb y qdrant son internos
-PUBLICADOS = {"frontend": 8090}
+PUBLICADOS = {"frontend": int(_env("FRONTEND_PORT", "8090"))}
 
 
 def escuchando(port, host="127.0.0.1"):
