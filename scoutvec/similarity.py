@@ -4,10 +4,9 @@ from typing import NamedTuple
 import numpy as np
 import polars as pl
 
+from scoutvec.datasets import DATASETS, POR_DEFECTO, get
 from scoutvec.roles import ROLES
 from scoutvec.vectors import FEATURES
-
-VECTORS = "vectors.parquet"
 
 # FEATURES es el orden de las 17 dimensiones del vector, reexportado aqui
 # para quien construya un perfil a mano: vec[i] corresponde a FEATURES[i].
@@ -16,6 +15,7 @@ DIMS = len(FEATURES)
 
 class Espacio(NamedTuple):
     """El espacio vectorial cargado. Listas paralelas, indexadas igual que V."""
+    slug: str        # de que dataset salio
     ids: list        # player_id de StatsBomb
     names: list
     roles: list
@@ -26,16 +26,22 @@ class Espacio(NamedTuple):
     P: np.ndarray    # (n, 17) percentiles sin normalizar, para los radares
 
 
-_cache = None
+# un espacio por dataset: los percentiles de cada uno se calcularon sobre
+# poblaciones distintas y no son intercambiables
+_cache: dict[str, "Espacio"] = {}
 
 
-def load(path=VECTORS):
-    global _cache
-    if _cache is None:
-        d = pl.read_parquet(path)
+def load(dataset=None):
+    ds = get(dataset)
+    if ds.slug not in _cache:
+        if not ds.vectores.exists():
+            raise SystemExit(f"falta {ds.vectores}: ejecuta el pipeline con "
+                             f"-d {ds.slug}")
+        d = pl.read_parquet(ds.vectores)
         P = np.array(d["vector"].to_list())
         V = P / np.linalg.norm(P, axis=1, keepdims=True)
-        _cache = Espacio(
+        _cache[ds.slug] = Espacio(
+            slug=ds.slug,
             ids=d["player_id"].to_list(),
             names=d["player"].to_list(),
             roles=d["role"].to_list(),
@@ -44,11 +50,11 @@ def load(path=VECTORS):
             minutes=d["minutos"].to_list(),
             V=V, P=P,
         )
-    return _cache
+    return _cache[ds.slug]
 
 
-def find(name):
-    names = load().names
+def find(name, dataset=None):
+    names = load(dataset).names
     hits = [i for i, n in enumerate(names) if name.lower() in n.lower()]
     if not hits:
         raise KeyError(f"sin coincidencia para {name!r}")
@@ -70,9 +76,9 @@ def _keep(role):
     return keep
 
 
-def vecinos(q, k, keep=None, salta=None):
+def vecinos(q, k, keep=None, salta=None, dataset=None):
     """Indices de los k mas cercanos a q, ya filtrados. El nucleo de todo."""
-    e = load()
+    e = load(dataset)
     s = e.V @ (q / np.linalg.norm(q))
     out = []
     for j in np.argsort(-s):
@@ -84,21 +90,21 @@ def vecinos(q, k, keep=None, salta=None):
     return out
 
 
-def _rank(q, k, keep, salta=None):
-    e = load()
+def _rank(q, k, keep, salta=None, dataset=None):
+    e = load(dataset)
     out = [(e.names[j], e.leagues[j], e.roles[j], round(s, 4))
-           for j, s in vecinos(q, k, keep, salta)]
+           for j, s in vecinos(q, k, keep, salta, dataset)]
     return pl.DataFrame(out, schema=["player", "league", "role", "sim"],
                         orient="row")
 
 
-def similar(name, k=8, role=None):
+def similar(name, k=8, role=None, dataset=None):
     keep = _keep(role)
-    i = find(name)
-    return _rank(load().V[i], k, keep, salta=i)
+    i = find(name, dataset)
+    return _rank(load(dataset).V[i], k, keep, salta=i, dataset=dataset)
 
 
-def target(vec, k=8, role=None):
+def target(vec, k=8, role=None, dataset=None):
     q = np.asarray(vec, dtype=float).ravel()
     if q.size != DIMS:
         raise ValueError(f"el perfil necesita {DIMS} dims en el orden "
@@ -110,32 +116,35 @@ def target(vec, k=8, role=None):
     fuera = [(FEATURES[i], v) for i, v in enumerate(q) if not 0 <= v <= 1]
     if fuera:
         print(f"  aviso: el espacio son percentiles en [0,1], fuera de rango: {fuera}")
-    return _rank(q, k, _keep(role))
+    return _rank(q, k, _keep(role), dataset=dataset)
 
 
-def similar_role(name, role=None, k=8):
-    e = load()
-    i = find(name)
-    return _rank(e.V[i], k, _keep(role) or {e.roles[i]}, salta=i)
+def similar_role(name, role=None, k=8, dataset=None):
+    e = load(dataset)
+    i = find(name, dataset)
+    return _rank(e.V[i], k, _keep(role) or {e.roles[i]}, salta=i,
+                 dataset=dataset)
 
 
-def show(name, k=8, role=None):
-    e = load()
+def show(name, k=8, role=None, dataset=None):
+    e = load(dataset)
     keep = _keep(role)
-    i = find(name)
+    i = find(name, dataset)
     filtro = "" if keep is None else f"  [rol={'|'.join(sorted(keep))}]"
     print(f"\n~ {e.names[i]} ({e.leagues[i]}, {e.roles[i]}){filtro}")
-    for p, lg, r, s in _rank(e.V[i], k, keep, salta=i).iter_rows():
+    for p, lg, r, s in _rank(e.V[i], k, keep, salta=i,
+                             dataset=dataset).iter_rows():
         print(f"  {s:.3f}  {p:38s} ({lg}, {r})")
 
 
-def show_target(vec, k=8, role=None, etiqueta="perfil"):
+def show_target(vec, k=8, role=None, etiqueta="perfil", dataset=None):
     filtro = "" if role is None else f"  [rol={role}]"
     print(f"\n~ {etiqueta} (target){filtro}")
     perfil = ", ".join(f"{f.removesuffix('_p90')}={v:.2f}"
                        for f, v in zip(FEATURES, vec))
     print(f"  {perfil}")
-    for p, lg, r, s in target(vec, k=k, role=role).iter_rows():
+    for p, lg, r, s in target(vec, k=k, role=role,
+                              dataset=dataset).iter_rows():
         print(f"  {s:.3f}  {p:38s} ({lg}, {r})")
 
 
@@ -148,16 +157,22 @@ def perfil(**kw):
     return [kw.get(f, 0.5) for f in FEATURES]
 
 
-def run(consultas=("Messi", "Busquets", "Piqué"), k=8, role=None,
-        mismo_rol=False):
-    e = load()
-    for q in consultas:
-        show(q, k=k, role=e.roles[find(q)] if mismo_rol else role)
+DEMO = {"men-2015-16": ("Messi", "Busquets", "Piqué"),
+        "women-2023-24": ("Patricia Guijarro", "Williamson", "Graham Hansen")}
+
+
+def run(consultas=None, k=8, role=None, mismo_rol=False, dataset=None):
+    ds = get(dataset)
+    e = load(dataset)
+    for q in consultas or DEMO.get(ds.slug, ()):
+        show(q, k=k, role=e.roles[find(q, dataset)] if mismo_rol else role,
+             dataset=dataset)
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(prog="python -m scoutvec.similarity")
-    ap.add_argument("players", nargs="*", default=["Messi", "Busquets", "Piqué"])
+    ap.add_argument("players", nargs="*", default=None)
+    ap.add_argument("-d", "--dataset", default=POR_DEFECTO, choices=list(DATASETS))
     ap.add_argument("-k", type=int, default=8)
     ap.add_argument("--role", default=None, help=f"filtra: {'|'.join(ROLES)}")
     ap.add_argument("--same-role", action="store_true",
@@ -169,6 +184,7 @@ if __name__ == "__main__":
 
     if a.target:
         vec = [float(x) for x in a.target.split(",")]
-        show_target(vec, k=a.k, role=a.role)
+        show_target(vec, k=a.k, role=a.role, dataset=a.dataset)
     else:
-        run(a.players, k=a.k, role=a.role, mismo_rol=a.same_role)
+        run(a.players or None, k=a.k, role=a.role, mismo_rol=a.same_role,
+            dataset=a.dataset)

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import Radar from './Radar'
-import { LABEL_FULL, ask, compare, getMeta, getSimilar, searchPlayers } from './api'
+import { LABEL_FULL, NoAutenticado, ask, compare, getMeta, getSimilar,
+         logout, me, searchPlayers } from './api'
+import { CambiarClave, Login } from './Auth'
 import { decidirSeleccion } from './select'
-import type { AskResponse, Meta, Neighbour, Player, Profile } from './types'
+import type { AskResponse, Meta, Neighbour, Player, Profile, Session } from './types'
 
 // slots categoricos en orden fijo, nunca ciclados. Validados con
 // scripts/validate_palette.js en claro y oscuro.
@@ -11,7 +13,25 @@ const COLORS = ['var(--series-1)', 'var(--series-2)',
 const MAX_CMP = 4
 
 export default function App() {
+  // 'cargando' hasta saber si hay sesion; null = anonimo
+  const [sesion, setSesion] = useState<Session | null | 'cargando'>('cargando')
+
+  useEffect(() => { me().then(setSesion).catch(() => setSesion(null)) }, [])
+
+  if (sesion === 'cargando') {
+    return <main className="wrap"><p className="muted">Loading…</p></main>
+  }
+  if (!sesion) return <Login onEntra={setSesion} />
+  if (sesion.must_change_password) {
+    return <CambiarClave sesion={sesion} onCambiada={setSesion} />
+  }
+  return <Explorer sesion={sesion} alSalir={() => setSesion(null)} />
+}
+
+function Explorer({ sesion, alSalir }:
+                  { sesion: Session; alSalir: () => void }) {
   const [meta, setMeta] = useState<Meta | null>(null)
+  const [dataset, setDataset] = useState<string | undefined>(undefined)
   const [q, setQ] = useState('Messi')
   const [hits, setHits] = useState<Player[]>([])
   const [anchor, setAnchor] = useState<Player | null>(null)   // referencia
@@ -33,15 +53,24 @@ export default function App() {
   // y si no del jugador de referencia
   const resultados: Neighbour[] = respuesta ? respuesta.results : neighbours
 
-  useEffect(() => { getMeta().then(setMeta).catch(e => setErr(e.message)) }, [])
+  // si la sesion caduca a media navegacion hay que volver al login, no
+  // pintar un error que el usuario no puede resolver
+  const fallo = (e: unknown) => {
+    if (e instanceof NoAutenticado) alSalir()
+    else setErr(e instanceof Error ? e.message : String(e))
+  }
+
+  useEffect(() => {
+    getMeta(dataset).then(m => { setMeta(m); setDataset(m.dataset) }).catch(fallo)
+  }, [dataset])
 
   // buscar segun se escribe, con un respiro para no disparar en cada tecla
   useEffect(() => {
     const t = setTimeout(() => {
-      searchPlayers(q, { limit: 8 }).then(setHits).catch(e => setErr(e.message))
+      searchPlayers(q, { limit: 8, dataset }).then(setHits).catch(fallo)
     }, 200)
     return () => clearTimeout(t)
-  }, [q])
+  }, [q, dataset])
 
   // Elegir solo cuando la busqueda es inequivoca: al arrancar, cuando queda
   // un unico resultado, o cuando el texto coincide exacto con un nombre —que
@@ -57,13 +86,13 @@ export default function App() {
   useEffect(() => {
     if (!anchor) return
     getSimilar(anchor.id, { k, role: role || undefined, sameRole,
-                            league: league || undefined })
-      .then(setNeighbours).catch(e => setErr(e.message))
-  }, [anchor, k, role, sameRole, league])
+                            league: league || undefined, dataset })
+      .then(setNeighbours).catch(fallo)
+  }, [anchor, k, role, sameRole, league, dataset])
 
   useEffect(() => {
     if (!picked.length) { setProfiles([]); return }
-    compare(picked).then(setProfiles).catch(e => setErr(e.message))
+    compare(picked, dataset).then(setProfiles).catch(fallo)
   }, [picked])
 
   function choose(p: Player) {
@@ -79,7 +108,7 @@ export default function App() {
     setPensando(true)
     setErr(null)
     try {
-      const r = await ask(pregunta)
+      const r = await ask(pregunta, dataset)
       setRespuesta(r)
       // el radar necesita al menos un perfil para no quedarse vacio
       setPicked(r.results.length ? [r.results[0].id] : [])
@@ -89,7 +118,7 @@ export default function App() {
         panelRespuesta.current?.scrollIntoView({ behavior: 'smooth',
                                                  block: 'start' }))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      fallo(e)
     } finally {
       setPensando(false)
     }
@@ -101,6 +130,8 @@ export default function App() {
       : (prev.length < MAX_CMP ? [...prev, id] : prev))
   }
 
+  const activo = meta?.datasets.find(d => d.slug === dataset)
+
   if (err) return <main className="wrap"><p className="error">Error: {err}
     <br /><small>Is the API running? <code>uvicorn scoutvec.api:app</code></small>
   </p></main>
@@ -110,13 +141,41 @@ export default function App() {
   return (
     <main className="wrap">
       <header>
-        <h1>scoutvec</h1>
+        <div className="topbar">
+          <h1>scoutvec</h1>
+          <span className="muted small">
+            {sesion.username}
+            {' · '}
+            <button type="button" className="linkish"
+                    onClick={() => { logout().finally(alSalir) }}>
+              sign out
+            </button>
+          </span>
+        </div>
         <p className="muted">
           Style similarity across {meta.players.toLocaleString()} outfield
-          players — La Liga, Premier League, Serie A, Ligue 1, 2015/16.
-          Position is not in the vector.
+          players — {meta.leagues.join(', ')}
+          {activo && <>, {activo.season}</>}. Position is not in the vector.
         </p>
       </header>
+
+      {meta.datasets.length > 1 && (
+        <section className="datasets" aria-label="Dataset">
+          {meta.datasets.map(d => (
+            <button key={d.slug} type="button" title={d.note}
+                    className={d.slug === dataset ? 'chip on' : 'chip'}
+                    onClick={() => {
+                      if (d.slug === dataset) return
+                      // otro dataset es otro espacio: nada de lo elegido sirve
+                      setDataset(d.slug); setMeta(null); setAnchor(null)
+                      setRespuesta(null); setPicked([]); setProfiles([])
+                      setNeighbours([]); setLeague(''); setQ('')
+                    }}>
+              {d.label} <span className="muted">{d.season}</span>
+            </button>
+          ))}
+        </section>
+      )}
 
       <form className="ask" onSubmit={preguntar}>
         <label htmlFor="ask-input">Ask in plain language</label>

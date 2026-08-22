@@ -16,7 +16,12 @@ from scoutvec.vectors import FEATURES
 MODELO = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 VERSION = os.getenv("OPENAI_PROMPT_VERSION", "v1")
 
-LIGAS = ["La Liga", "Premier", "Serie A", "Ligue 1"]
+def ligas_de(dataset=None):
+    from scoutvec.datasets import get
+    return list(get(dataset).ligas)
+
+
+LIGAS = ligas_de()
 ROLES_VALIDOS = [r for r in ROLES if r != "GK"]
 
 # que mide cada dimension, en el lenguaje del dominio. Sin esto el modelo
@@ -71,7 +76,7 @@ encodes playing style, so filtering by role is a narrowing, not the mechanism.
 describe exactly the adjustments you listed and nothing else."""
 
 
-def esquema():
+def esquema(ligas=None):
     """JSON Schema strict.
 
     El modelo enumera AJUSTES, no un perfil completo. El perfil se construye
@@ -97,7 +102,8 @@ def esquema():
                 },
             },
             "role": {"type": ["string", "null"], "enum": [*ROLES_VALIDOS, None]},
-            "league": {"type": ["string", "null"], "enum": [*LIGAS, None]},
+            "league": {"type": ["string", "null"],
+                       "enum": [*(ligas or LIGAS), None]},
             "k": {"type": "integer"},
             "summary": {"type": "string"},
         },
@@ -118,7 +124,7 @@ def cliente():
     return OpenAI(api_key=clave)
 
 
-def sanear(bruto):
+def sanear(bruto, ligas=None):
     """Convierte la salida del modelo en la consulta que se ejecuta.
 
     El perfil se DERIVA de los ajustes: lo no ajustado vale 0.5. Los ajustes
@@ -140,22 +146,24 @@ def sanear(bruto):
         perfil[aj["feature"]] = aj["value"]
 
     role = bruto.get("role")
+    ligas = ligas or LIGAS
     league = bruto.get("league")
     return {
         "adjustments": ajustes,
         "profile": perfil,
         "role": role if role in ROLES_VALIDOS else None,
-        "league": league if league in LIGAS else None,
+        "league": league if league in ligas else None,
         "k": max(1, min(50, int(bruto.get("k") or 8))),
         "summary": str(bruto.get("summary", ""))[:400],
     }
 
 
-def traducir(pregunta, cli=None):
+def traducir(pregunta, cli=None, dataset=None):
     """Devuelve la consulta estructurada. `cli` se inyecta en los tests."""
     if not (pregunta or "").strip():
         raise ValueError("la pregunta esta vacia")
 
+    ligas = ligas_de(dataset)
     cli = cli or cliente()
     r = cli.chat.completions.create(
         model=MODELO,
@@ -165,10 +173,10 @@ def traducir(pregunta, cli=None):
         response_format={
             "type": "json_schema",
             "json_schema": {"name": "scout_query", "strict": True,
-                            "schema": esquema()},
+                            "schema": esquema(ligas)},
         },
     )
-    q = sanear(json.loads(r.choices[0].message.content))
+    q = sanear(json.loads(r.choices[0].message.content), ligas)
     q["model"] = MODELO
     q["prompt_version"] = VERSION
     return q

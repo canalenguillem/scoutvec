@@ -4,10 +4,9 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+from scoutvec.datasets import DATASETS, POR_DEFECTO, get
 from scoutvec.features import RATIOS
 from scoutvec.roles import POS2ROLE
-
-SALIDA = Path("vectors.parquet")
 
 # 11 volumenes p90 + 6 ratios. Los ratios son los que no escalan con la
 # posesion del equipo, que es la fuga de contexto documentada en PROJECT.md.
@@ -36,12 +35,16 @@ def residualiza(d, cols):
     return d.with_columns(ajustadas)
 
 
-def run(over=None, escribe=True, normalizar=True):
+def run(over=None, escribe=True, normalizar=True, dataset=None):
     """over: solo para probar el canario. En produccion el percentil es GLOBAL."""
-    if escribe and SALIDA.exists():
-        os.remove(SALIDA)
+    ds = get(dataset)
+    if escribe and ds.vectores.exists():
+        os.remove(ds.vectores)
+    if not ds.jugadores.exists():
+        raise SystemExit(f"falta {ds.jugadores}: ejecuta primero "
+                         f"python -m scoutvec.features -d {ds.slug}")
 
-    d = pl.read_parquet("players.parquet")
+    d = pl.read_parquet(ds.jugadores)
     d = d.with_columns(
         pl.col("position").replace_strict(POS2ROLE, default=None).alias("role")
     )
@@ -101,7 +104,8 @@ def run(over=None, escribe=True, normalizar=True):
     d = d.with_columns(pl.concat_list(pct).alias("vector"))
 
     if escribe:
-        d.write_parquet(SALIDA)
+        d.write_parquet(ds.vectores)
+        print(f"-> {ds.vectores}")
 
     print(d.group_by("role").agg(pl.len().alias("n")).sort("role"))
     print(d.group_by("league").agg(pl.len().alias("n")).sort("league"))
@@ -111,4 +115,7 @@ def run(over=None, escribe=True, normalizar=True):
 
 
 if __name__ == "__main__":
-    run()
+    import argparse
+    ap = argparse.ArgumentParser(prog="python -m scoutvec.vectors")
+    ap.add_argument("-d", "--dataset", default=POR_DEFECTO, choices=list(DATASETS))
+    run(dataset=ap.parse_args().dataset)

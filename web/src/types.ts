@@ -19,7 +19,17 @@ export interface Neighbour extends Player {
   sim: number
 }
 
+export interface DatasetInfo {
+  slug: string
+  label: string
+  season: string
+  note: string
+  leagues: string[]
+}
+
 export interface Meta {
+  dataset: string
+  datasets: DatasetInfo[]
   features: string[]
   roles: Role[]
   leagues: string[]
@@ -32,6 +42,7 @@ export interface SimilarOpts {
   role?: string
   sameRole?: boolean
   league?: string
+  dataset?: string
 }
 
 export interface Adjustment {
@@ -56,4 +67,9 @@ export interface StructuredQuery {
 export interface AskResponse {
   query: StructuredQuery
   results: Neighbour[]
+}
+
+export interface Session {
+  username: string
+  must_change_password: boolean
 }

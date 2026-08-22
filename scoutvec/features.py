@@ -4,8 +4,9 @@ from pathlib import Path
 
 import polars as pl
 
+from scoutvec.datasets import DATASETS, POR_DEFECTO, get
+
 MIN_MINUTOS = 600
-SALIDA = Path("players.parquet")
 
 METRICAS = ["Pass", "Shot", "Dribble", "Pressure", "Carry",
             "Ball Receipt*", "Duel", "Interception", "Clearance"]
@@ -103,13 +104,17 @@ def posesion(ev):
                     pl.col("m").sum()).round(4).alias("posesion")))
 
 
-def run():
+def run(dataset=None):
+    ds = get(dataset)
     # borrar antes de nada: si esto falla, no debe quedar un parquet viejo
     # que parezca recien generado
-    if SALIDA.exists():
-        os.remove(SALIDA)
+    if ds.jugadores.exists():
+        os.remove(ds.jugadores)
+    if not ds.eventos.exists():
+        raise SystemExit(f"falta {ds.eventos}: ejecuta primero "
+                         f"python -m scoutvec.ingest -d {ds.slug}")
 
-    ev = pl.read_parquet("data/events.parquet")
+    ev = pl.read_parquet(ds.eventos)
 
     # minutos ≈ (último - primer evento) por jugador y partido
     por_partido = (ev.group_by(["player_id", "player", "league", "team",
@@ -186,9 +191,9 @@ def run():
     huecos = {c: df[c].null_count() for c in ratios}
     print("nulos por denominador escaso:", {k: v for k, v in huecos.items() if v})
 
-    df.write_parquet(SALIDA)
+    df.write_parquet(ds.jugadores)
 
-    print(df.shape)
+    print(f"{ds.slug}: {df.shape}")
     print(df.group_by("league").agg(pl.len().alias("n")).sort("league"))
     print("multiliga:", df.filter(pl.col("n_ligas") > 1).height)
     print(f"posesion: media {df['posesion'].mean():.4f} "
@@ -198,4 +203,7 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    import argparse
+    ap = argparse.ArgumentParser(prog="python -m scoutvec.features")
+    ap.add_argument("-d", "--dataset", default=POR_DEFECTO, choices=list(DATASETS))
+    run(ap.parse_args().dataset)

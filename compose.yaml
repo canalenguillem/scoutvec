@@ -46,9 +46,12 @@ services:
       MARIADB_PASSWORD: ${MARIADB_PASSWORD:?falta en .env}
       MARIADB_DATABASE: ${MARIADB_DATABASE:?falta en .env}
       QDRANT_URL: http://qdrant:6333
-      VECTORS_PATH: /data/vectors.parquet
+      ADMIN_USER: ${ADMIN_USER:-}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
     volumes:
-      - ./vectors.parquet:/data/vectors.parquet:ro
+      # los vectores de cada dataset; el seed carga los que encuentre
+      - ./vectors_men-2015-16.parquet:/app/vectors_men-2015-16.parquet:ro
+      - ./vectors_women-2023-24.parquet:/app/vectors_women-2023-24.parquet:ro
     depends_on:
       mariadb:
         condition: service_healthy
@@ -57,6 +60,9 @@ services:
   backend:
     build: .
     restart: unless-stopped
+    volumes:
+      - ./vectors_men-2015-16.parquet:/app/vectors_men-2015-16.parquet:ro
+      - ./vectors_women-2023-24.parquet:/app/vectors_women-2023-24.parquet:ro
     environment:
       SCOUTVEC_BACKEND: stores
       MARIADB_HOST: mariadb
@@ -66,6 +72,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-auto}
     depends_on:
       mariadb:
         condition: service_healthy

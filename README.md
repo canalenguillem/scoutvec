@@ -73,10 +73,40 @@ had moved two dimensions it never touched. Two sources of truth can disagree;
 one cannot. If the players are wrong, you can see precisely which dimension
 was misread.
 
+## Two datasets
+
+The pipeline is not tied to one set of leagues. A dataset is four leagues of
+one season, and each is its own vector space — percentiles are global *within*
+a dataset and are never compared across them.
+
+| dataset | leagues | players | events | role purity @8 |
+|---|---|---|---|---|
+| `men-2015-16` | La Liga, Premier, Serie A, Ligue 1 | 1,419 | 5.3M | 76.8% |
+| `women-2023-24` | Liga F, FA WSL, Frauen Bundesliga, Serie A Women | 740 | 2.2M | 67.5% |
+
+```bash
+python -m scoutvec.ingest   -d women-2023-24
+python -m scoutvec.features -d women-2023-24
+python -m scoutvec.vectors  -d women-2023-24
+```
+
+The women's 2023/24 set is the most recent *complete* multi-league season
+StatsBomb open data offers. The recent men's data is a trap worth naming: the
+Bundesliga 2023/24 files look like a season and are 34 matches, all of them
+Bayer Leverkusen's — the same shape as the "La Liga is Messi-only" problem
+documented in the log. Always check match count *and* team count.
+
+It measurably works less well than the men's set: 67.5% role purity against
+76.8%, and possession clustering of 0.592 against 0.450. Half the players and
+a third of the matches per league make every per-90 noisier and every
+percentile coarser. Reported rather than hidden — the method transfers, the
+sample size does not.
+
 ## The vector
 
-1,419 outfield players with 600+ minutes, from 5.3M StatsBomb events across
-**La Liga, Premier League, Serie A and Ligue 1, 2015/16**.
+Taking `men-2015-16` as the worked example: 1,419 outfield players with 600+
+minutes, from 5.3M StatsBomb events across **La Liga, Premier League, Serie A
+and Ligue 1, 2015/16**.
 
 Each player is 17 dimensions — 11 per-90 volumes and 6 ratios:
 

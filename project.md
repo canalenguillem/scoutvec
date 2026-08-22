@@ -144,6 +144,26 @@ free. It is a partial fix: 0.450 is still far from 0.000, because
 residualising removes only the linear component and because team style has
 dimensions that possession does not capture.
 
+**Recent men's open data is a trap, the women's game is not.** Looking for a
+more current dataset than 2015/16: the Bundesliga 2023/24 files in StatsBomb
+open data have 34 matches and 18 team names, which reads like a thin league
+until you count per team — Leverkusen appears in all 34 and everyone else in
+2. It is one club's season. MLS 2023 is 6 matches. The only complete recent
+multi-league season on offer is the women's: Liga F, FA WSL, Frauen Bundesliga
+and Serie A Women, 2023/24, 634 matches, all with events.
+
+This is the second time the same trap has appeared in this project. Count
+matches *and* distinct teams *and* appearances per team before believing a
+competition file.
+
+**A second dataset is a schema change, not a config change.** Adding
+`women-2023-24` meant every artefact needed a dataset in its name, MariaDB
+needed a `dataset` column in its primary key, and Qdrant needed a collection
+per space — because percentiles are computed within a population and two
+populations cannot share an index without silently comparing incomparable
+numbers. The migration drops and recreates `players`, which is derived, and
+never touches `users`, which is not.
+
 **Do not let a model emit an answer and its explanation separately.** The
 first version of the language layer asked for a full 17-dimension profile plus
 a sentence describing it. For "un central que saque el balón jugado y gane de
@@ -296,6 +316,14 @@ Phase 4 — Interface                                          [DONE]
   [x] Table view, legend, light/dark, validated categorical palette
   [x] Docker Compose: frontend, backend, mariadb, qdrant, seed —
       one published port, nginx proxying /api
+
+Phase 4.5 — Multi-dataset + auth                              [DONE]
+  [x] datasets.py: un dataset = N ligas de una temporada, su propio espacio
+  [x] Todo el pipeline acepta -d/--dataset; artefactos con sufijo
+  [x] women-2023-24 construido: 740 jugadoras, 2.2M eventos, 4 ligas
+  [x] Una coleccion Qdrant y una columna dataset por espacio
+  [x] Login con scrypt, sesiones en MariaDB, cambio obligatorio de clave
+  [x] 25 tests de autenticacion
 
 Phase 5 — Natural language layer                             [DONE]
   [x] OpenAI structured outputs: query → adjustments + role/league/k

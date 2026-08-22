@@ -15,9 +15,9 @@ import time
 
 import polars as pl
 
+from scoutvec.datasets import DATASETS, disponibles, get
 from scoutvec.vectors import FEATURES
 
-COLECCION = "players"
 DIMS = len(FEATURES)
 
 # columna SQL por metrica: los puntos y los % no valen como identificadores
@@ -71,7 +71,8 @@ def qdrant(reintentos=30, espera=2):
 
 DDL = f"""
 CREATE TABLE IF NOT EXISTS players (
-  id            INT PRIMARY KEY,
+  dataset       VARCHAR(32) NOT NULL,
+  id            INT NOT NULL,
   name          VARCHAR(120) NOT NULL,
   team          VARCHAR(80)  NOT NULL,
   league        VARCHAR(40)  NOT NULL,
@@ -79,6 +80,8 @@ CREATE TABLE IF NOT EXISTS players (
   minutes       INT          NOT NULL,
   possession    DECIMAL(6,4) NOT NULL,
   {chr(10).join(f'  {c:<22} DECIMAL(6,4) NOT NULL,' for c in COLS.values())}
+  PRIMARY KEY (dataset, id),
+  INDEX idx_dataset (dataset),
   INDEX idx_league (league),
   INDEX idx_role   (role),
   INDEX idx_team   (team),
@@ -88,66 +91,108 @@ CREATE TABLE IF NOT EXISTS players (
 """
 
 
-def sembrar(parquet="vectors.parquet"):
-    """Carga vectors.parquet en ambos almacenes. Idempotente: reescribe todo."""
-    from qdrant_client import models
+def crear_usuario_inicial(cur, usuario, password):
+    """Crea el usuario si no existe. Idempotente: no pisa uno ya creado."""
+    from scoutvec import auth
+    cur.execute("SELECT id FROM users WHERE username = %s", (usuario,))
+    if cur.fetchone():
+        print(f"  usuario {usuario!r} ya existe, no se toca", flush=True)
+        return False
+    cur.execute(
+        "INSERT INTO users (username, password_hash, must_change) "
+        "VALUES (%s, %s, 1)", (usuario, auth.hashear(password)))
+    print(f"  usuario {usuario!r} creado, debe cambiar la clave al entrar",
+          flush=True)
+    return True
 
-    d = pl.read_parquet(parquet)
-    print(f"sembrando {len(d)} jugadores desde {parquet}", flush=True)
+
+def sembrar():
+    """Carga cada dataset generado en ambos almacenes. Idempotente."""
+    from qdrant_client import models
+    from scoutvec import auth
+
+    listos = disponibles()
+    if not listos:
+        raise SystemExit("ningun dataset generado; ejecuta el pipeline")
+    print(f"datasets a sembrar: {[x.slug for x in listos]}", flush=True)
 
     # --- MariaDB -----------------------------------------------------------
     con = conectar()
     cur = con.cursor()
-    cur.execute(DDL)
-    cur.execute("DELETE FROM players")
 
-    campos = ["id", "name", "team", "league", "role", "minutes",
+    # players es derivada: si le falta una columna se recrea sin mas. users y
+    # sessions NUNCA se tocan aqui — ahi viven las contraseñas.
+    cur.execute("SELECT COUNT(*) FROM information_schema.columns "
+                "WHERE table_schema = DATABASE() AND table_name = 'players' "
+                "AND column_name = 'dataset'")
+    if cur.fetchone()[0] == 0:
+        cur.execute("SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = DATABASE() AND table_name = 'players'")
+        if cur.fetchone()[0]:
+            print("  esquema antiguo de players: se recrea", flush=True)
+            cur.execute("DROP TABLE players")
+    cur.execute(DDL)
+    for sentencia in auth.DDL.strip().split(";"):
+        if sentencia.strip():
+            cur.execute(sentencia)
+
+    usuario = os.getenv("ADMIN_USER", "").strip()
+    clave = os.getenv("ADMIN_INITIAL_PASSWORD", "").strip()
+    if usuario and clave:
+        crear_usuario_inicial(cur, usuario, clave)
+    elif usuario:
+        print(f"  aviso: ADMIN_USER={usuario!r} sin ADMIN_INITIAL_PASSWORD",
+              flush=True)
+
+    qc = qdrant()
+    campos = ["dataset", "id", "name", "team", "league", "role", "minutes",
               "possession"] + list(COLS.values())
     sql = (f"INSERT INTO players ({','.join(campos)}) "
            f"VALUES ({','.join(['%s'] * len(campos))})")
-    filas = [
-        (int(r["player_id"]), r["player"], r["team"], r["league"], r["role"],
-         int(r["minutos"]), float(r["posesion"]),
-         *[float(r[f"pct_{f}"]) for f in FEATURES])
-        for r in d.iter_rows(named=True)
-    ]
-    cur.executemany(sql, filas)
-    con.commit()
-    cur.execute("SELECT COUNT(*) FROM players")
-    n_sql = cur.fetchone()[0]
+
+    for ds in listos:
+        d = pl.read_parquet(ds.vectores)
+        cur.execute("DELETE FROM players WHERE dataset = %s", (ds.slug,))
+        cur.executemany(sql, [
+            (ds.slug, int(r["player_id"]), r["player"], r["team"], r["league"],
+             r["role"], int(r["minutos"]), float(r["posesion"]),
+             *[float(r[f"pct_{f}"]) for f in FEATURES])
+            for r in d.iter_rows(named=True)])
+        con.commit()
+        cur.execute("SELECT COUNT(*) FROM players WHERE dataset = %s",
+                    (ds.slug,))
+        n_sql = cur.fetchone()[0]
+
+        # una coleccion por dataset: sus percentiles salen de poblaciones
+        # distintas, mezclarlos en un mismo indice seria un error silencioso
+        if qc.collection_exists(ds.coleccion):
+            qc.delete_collection(ds.coleccion)
+        qc.create_collection(
+            collection_name=ds.coleccion,
+            vectors_config=models.VectorParams(
+                size=DIMS, distance=models.Distance.COSINE))
+        # el payload existe para filtrar dentro del indice, no para leerlo
+        for campo in ("role", "league", "team"):
+            qc.create_payload_index(
+                ds.coleccion, campo,
+                field_schema=models.PayloadSchemaType.KEYWORD)
+        qc.upsert(ds.coleccion, points=[
+            models.PointStruct(
+                id=int(r["player_id"]),
+                vector=[float(r[f"pct_{f}"]) for f in FEATURES],
+                payload={"role": r["role"], "league": r["league"],
+                         "team": r["team"]})
+            for r in d.iter_rows(named=True)], wait=True)
+        n_q = qc.count(ds.coleccion, exact=True).count
+
+        print(f"  {ds.slug:16s} parquet={len(d)} mariadb={n_sql} "
+              f"qdrant={n_q}", flush=True)
+        if n_sql != len(d) or n_q != len(d):
+            raise SystemExit(f"siembra incompleta de {ds.slug}")
+
     con.close()
-    print(f"  mariadb: {n_sql} filas", flush=True)
-
-    # --- Qdrant ------------------------------------------------------------
-    qc = qdrant()
-    if qc.collection_exists(COLECCION):
-        qc.delete_collection(COLECCION)
-    qc.create_collection(
-        collection_name=COLECCION,
-        vectors_config=models.VectorParams(size=DIMS,
-                                           distance=models.Distance.COSINE),
-    )
-    # el payload existe para filtrar dentro del indice, no para leerlo
-    for campo in ("role", "league", "team"):
-        qc.create_payload_index(COLECCION, campo,
-                                field_schema=models.PayloadSchemaType.KEYWORD)
-
-    qc.upsert(COLECCION, points=[
-        models.PointStruct(
-            id=int(r["player_id"]),
-            vector=[float(r[f"pct_{f}"]) for f in FEATURES],
-            payload={"role": r["role"], "league": r["league"], "team": r["team"]},
-        )
-        for r in d.iter_rows(named=True)
-    ], wait=True)
-    n_q = qc.count(COLECCION, exact=True).count
-    print(f"  qdrant : {n_q} puntos", flush=True)
-
-    if n_sql != len(d) or n_q != len(d):
-        raise SystemExit(f"siembra incompleta: parquet={len(d)} "
-                         f"mariadb={n_sql} qdrant={n_q}")
     print("siembra ok", flush=True)
 
 
 if __name__ == "__main__":
-    sembrar(os.getenv("VECTORS_PATH", "vectors.parquet"))
+    sembrar()

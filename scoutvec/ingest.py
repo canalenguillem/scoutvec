@@ -6,18 +6,10 @@ from pathlib import Path
 import polars as pl
 from tqdm import tqdm
 
+from scoutvec.datasets import DATASETS, POR_DEFECTO, get
 from scoutvec.fetch import matches, events
 
-# (comp_id, season_id) — todas 2015/16
-LIGAS = {
-    "La Liga": (11, 27),
-    "Premier": (2, 27),
-    "Serie A": (12, 27),
-    "Ligue 1": (7, 27),
-}
-
 DEST = Path("data")
-SALIDA = DEST / "events.parquet"
 
 SCHEMA = {
     "league": pl.String,
@@ -100,9 +92,9 @@ def flatten(e, match_id, league):
     }
 
 
-def una_liga(league, comp, season):
+def una_liga(ds, league, comp, season):
     """Ingesta una liga a su propio parquet. Devuelve (ruta, filas)."""
-    destino = DEST / f"events_{slug(league)}.parquet"
+    destino = ds.eventos_liga(league)
     if destino.exists():
         os.remove(destino)
 
@@ -129,44 +121,49 @@ def una_liga(league, comp, season):
     return destino, n
 
 
-def run(ligas=None):
-    ligas = ligas or list(LIGAS)
+def run(dataset=None, ligas=None):
+    ds = get(dataset)
+    ligas = ligas or list(ds.ligas)
 
     # validar ANTES de borrar: un nombre mal escrito no debe destruir la salida
-    malas = [n for n in ligas if n not in LIGAS]
+    malas = [n for n in ligas if n not in ds.ligas]
     if malas:
-        raise ValueError(f"liga desconocida: {malas} — validas: {list(LIGAS)}")
+        raise ValueError(f"liga desconocida en {ds.slug}: {malas} — "
+                         f"validas: {list(ds.ligas)}")
 
     DEST.mkdir(exist_ok=True)
+    print(f"dataset {ds.slug} ({ds.temporada}): {', '.join(ligas)}", flush=True)
 
     # borrar antes de regenerar: un fallo no debe dejar datos viejos en su sitio
-    if SALIDA.exists():
-        os.remove(SALIDA)
+    if ds.eventos.exists():
+        os.remove(ds.eventos)
 
     partes, total = [], 0
     for n in ligas:
-        ruta, filas = una_liga(n, *LIGAS[n])
+        ruta, filas = una_liga(ds, n, *ds.ligas[n])
         partes.append(ruta)
         total += filas
 
     # concatenado en streaming, sin materializar las cuatro ligas a la vez
-    pl.concat([pl.scan_parquet(p) for p in partes]).sink_parquet(SALIDA)
+    pl.concat([pl.scan_parquet(p) for p in partes]).sink_parquet(ds.eventos)
 
-    df = pl.scan_parquet(SALIDA)
+    df = pl.scan_parquet(ds.eventos)
     resumen = (df.group_by("league")
                  .agg([pl.len().alias("eventos"),
                        pl.col("match_id").n_unique().alias("partidos"),
                        pl.col("player_id").n_unique().alias("jugadores")])
                  .sort("league").collect())
     print(resumen)
-    print(f"total: {total:,} eventos -> {SALIDA} "
-          f"({SALIDA.stat().st_size / 2**20:.1f} MiB)")
+    print(f"total: {total:,} eventos -> {ds.eventos} "
+          f"({ds.eventos.stat().st_size / 2**20:.1f} MiB)")
     assert resumen["eventos"].sum() == total, "el concatenado perdio filas"
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(prog="python -m scoutvec.ingest")
+    ap.add_argument("-d", "--dataset", default=POR_DEFECTO,
+                    choices=list(DATASETS), help="que conjunto de ligas")
     ap.add_argument("ligas", nargs="*", default=None,
-                    help=f"por defecto todas: {list(LIGAS)}")
+                    help="por defecto, todas las del dataset")
     a = ap.parse_args()
-    run(a.ligas or None)
+    run(a.dataset, a.ligas or None)

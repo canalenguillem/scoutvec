@@ -6,11 +6,15 @@ Con SCOUTVEC_BACKEND=numpy usa vectors.parquet en memoria y no necesita
 ningun servicio — que es como se desarrolla fuera de Docker.
 """
 import os
+from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import (Cookie, Depends, FastAPI, HTTPException, Query,
+                     Request, Response)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from scoutvec import auth
+from scoutvec.datasets import DATASETS, POR_DEFECTO, disponibles
 from scoutvec.roles import ROLES
 from scoutvec.vectors import FEATURES
 
@@ -30,6 +34,57 @@ app.add_middleware(
     allow_origins=["http://localhost:5180", "http://127.0.0.1:5180"],
     allow_methods=["GET", "POST"], allow_headers=["*"],
 )
+
+
+# ------------------------------------------------------------------ sesion
+class Credenciales(BaseModel):
+    username: str
+    password: str
+
+
+class CambioClave(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class Sesion(BaseModel):
+    username: str
+    must_change_password: bool
+
+
+def _con():
+    from scoutvec import store
+    return store.conectar(reintentos=3, espera=1)
+
+
+def sesion_actual(scoutvec_session: str | None = Cookie(default=None)):
+    """Sesion valida o 401. Es la puerta de todos los endpoints de datos."""
+    if not scoutvec_session:
+        raise HTTPException(401, "no autenticado")
+    con = _con(); cur = con.cursor()
+    cur.execute(
+        "SELECT u.id, u.username, u.must_change, s.expires_at "
+        "FROM sessions s JOIN users u ON u.id = s.user_id "
+        "WHERE s.token_hash = %s", (auth.huella(scoutvec_session),))
+    fila = cur.fetchone()
+    con.close()
+    if not fila:
+        raise HTTPException(401, "sesion invalida")
+    if fila[3] and fila[3].replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        raise HTTPException(401, "sesion caducada")
+    return {"id": fila[0], "username": fila[1], "must_change": bool(fila[2])}
+
+
+def usuario(u=Depends(sesion_actual)):
+    """Sesion valida Y con la clave ya cambiada.
+
+    Separar las dos comprobaciones es lo que permite que un usuario con clave
+    temporal pueda llamar a /auth/change-password y a nada mas.
+    """
+    if u["must_change"]:
+        raise HTTPException(
+            403, "debes cambiar la contraseña antes de usar la aplicacion")
+    return u
 
 
 class Jugador(BaseModel):
@@ -93,12 +148,17 @@ class Objetivo(BaseModel):
 
 # ---------------------------------------------------------------- backends
 class BackendNumpy:
-    """vectors.parquet en memoria. Sin servicios."""
+    """Los parquet en memoria. Sin servicios."""
 
     def __init__(self):
         from scoutvec import similarity as sim
         self.sim = sim
-        self.e = sim.load(os.getenv("VECTORS_PATH", "vectors.parquet"))
+        self.ds = None
+
+    def usar(self, slug):
+        self.ds = slug
+        self.e = self.sim.load(slug)
+        return self
 
     def _fila(self, i):
         e = self.e
@@ -142,7 +202,8 @@ class BackendNumpy:
         i = self._indice(pid)
         holgura = k if league is None else min(len(self.e.ids) - 1, k * 12)
         out = []
-        for j, s in self.sim.vecinos(self.e.V[i], holgura, keep, salta=i):
+        for j, s in self.sim.vecinos(self.e.V[i], holgura, keep, salta=i,
+                                     dataset=self.ds):
             if league and self.e.leagues[j] != league:
                 continue
             out.append({**self._fila(j), "sim": round(s, 4)})
@@ -156,7 +217,7 @@ class BackendNumpy:
         # se pide de mas porque la liga se filtra despues del ranking
         holgura = k if league is None else min(len(self.e.ids), k * 12)
         out = []
-        for j, s in self.sim.vecinos(q, holgura, keep):
+        for j, s in self.sim.vecinos(q, holgura, keep, dataset=self.ds):
             if league and self.e.leagues[j] != league:
                 continue
             out.append({**self._fila(j), "sim": round(s, 4)})
@@ -172,6 +233,15 @@ class BackendStores:
         from scoutvec import store
         self.store = store
         self.qc = store.qdrant()
+        self.ds = POR_DEFECTO
+
+    def usar(self, slug):
+        self.ds = slug
+        return self
+
+    @property
+    def coleccion(self):
+        return DATASETS[self.ds].coleccion
 
     def _con(self):
         return self.store.conectar(reintentos=3, espera=1)
@@ -183,19 +253,19 @@ class BackendStores:
 
     def meta(self):
         con = self._con(); cur = con.cursor()
-        cur.execute("SELECT DISTINCT role FROM players ORDER BY role")
+        cur.execute("SELECT DISTINCT role FROM players WHERE dataset=%s ORDER BY role", (self.ds,))
         roles = [r[0] for r in cur.fetchall()]
-        cur.execute("SELECT DISTINCT league FROM players ORDER BY league")
+        cur.execute("SELECT DISTINCT league FROM players WHERE dataset=%s ORDER BY league", (self.ds,))
         leagues = [r[0] for r in cur.fetchall()]
-        cur.execute("SELECT DISTINCT team FROM players ORDER BY team")
+        cur.execute("SELECT DISTINCT team FROM players WHERE dataset=%s ORDER BY team", (self.ds,))
         teams = [r[0] for r in cur.fetchall()]
-        cur.execute("SELECT COUNT(*) FROM players")
+        cur.execute("SELECT COUNT(*) FROM players WHERE dataset=%s", (self.ds,))
         n = cur.fetchone()[0]
         con.close()
         return {"roles": roles, "leagues": leagues, "teams": teams, "players": n}
 
     def listar(self, q, league, role, team, limit, offset):
-        cond, args = [], []
+        cond, args = ["dataset = %s"], [self.ds]
         if q:
             cond.append("name LIKE %s"); args.append(f"%{q}%")
         if league:
@@ -204,7 +274,7 @@ class BackendStores:
             cond.append("role = %s"); args.append(role)
         if team:
             cond.append("team = %s"); args.append(team)
-        where = f"WHERE {' AND '.join(cond)}" if cond else ""
+        where = f"WHERE {' AND '.join(cond)}"
         con = self._con(); cur = con.cursor()
         cur.execute(f"SELECT id,name,team,league,role,minutes FROM players "
                     f"{where} ORDER BY minutes DESC LIMIT %s OFFSET %s",
@@ -216,7 +286,7 @@ class BackendStores:
     def _uno(self, pid):
         con = self._con(); cur = con.cursor()
         cur.execute("SELECT id,name,team,league,role,minutes FROM players "
-                    "WHERE id = %s", (pid,))
+                    "WHERE dataset = %s AND id = %s", (self.ds, pid))
         r = cur.fetchone(); con.close()
         if not r:
             raise HTTPException(404, f"jugador {pid} no esta en el espacio")
@@ -226,7 +296,8 @@ class BackendStores:
         cols = list(self.store.COLS.values())
         con = self._con(); cur = con.cursor()
         cur.execute(f"SELECT id,name,team,league,role,minutes,{','.join(cols)} "
-                    f"FROM players WHERE id = %s", (pid,))
+                    f"FROM players WHERE dataset = %s AND id = %s",
+                    (self.ds, pid))
         r = cur.fetchone(); con.close()
         if not r:
             raise HTTPException(404, f"jugador {pid} no esta en el espacio")
@@ -252,7 +323,8 @@ class BackendStores:
         marca = ",".join(["%s"] * len(ids))
         con = self._con(); cur = con.cursor()
         cur.execute(f"SELECT id,name,team,league,role,minutes FROM players "
-                    f"WHERE id IN ({marca})", tuple(ids))
+                    f"WHERE dataset = %s AND id IN ({marca})",
+                    (self.ds, *ids))
         por_id = {r[0]: self._fila(r) for r in cur.fetchall()}
         con.close()
         return [{**por_id[p.id], "sim": round(float(p.score), 4)}
@@ -261,14 +333,14 @@ class BackendStores:
     def vecinos(self, pid, k, keep, league):
         self._uno(pid)                       # 404 si no existe
         res = self.qc.query_points(
-            self.store.COLECCION, query=pid, limit=k,
+            self.coleccion, query=pid, limit=k,
             query_filter=self._filtro(keep, league), with_payload=False).points
         return self._hidratar([p for p in res if p.id != pid][:k])
 
     def objetivo(self, vec, k, keep, league=None):
         # aqui la liga entra en el filtro del indice, no despues
         res = self.qc.query_points(
-            self.store.COLECCION, query=list(map(float, vec)), limit=k,
+            self.coleccion, query=list(map(float, vec)), limit=k,
             query_filter=self._filtro(keep, league), with_payload=False).points
         return self._hidratar(res)
 
@@ -276,11 +348,22 @@ class BackendStores:
 _backend = None
 
 
-def backend():
+def backend(dataset=None):
     global _backend
     if _backend is None:
         _backend = BackendNumpy() if BACKEND == "numpy" else BackendStores()
-    return _backend
+    return _backend.usar(_dataset(dataset))
+
+
+def _dataset(slug: str | None) -> str:
+    """Valida el dataset pedido contra los que estan realmente cargados."""
+    listos = [d.slug for d in disponibles()] or [POR_DEFECTO]
+    if slug is None:
+        return POR_DEFECTO if POR_DEFECTO in listos else listos[0]
+    if slug not in DATASETS:
+        raise HTTPException(422, f"dataset {slug!r} desconocido, validos: "
+                                 f"{list(DATASETS)}")
+    return slug
 
 
 def _rol(role):
@@ -302,9 +385,95 @@ def health():
     return {"status": "ok", "backend": BACKEND, "players": n}
 
 
+@app.post("/auth/login", response_model=Sesion, summary="Iniciar sesion")
+def login(c: Credenciales, resp: Response, request: Request):
+    con = _con(); cur = con.cursor()
+    cur.execute("SELECT id, password_hash, must_change FROM users "
+                "WHERE username = %s", (c.username.strip(),))
+    fila = cur.fetchone()
+
+    # se verifica siempre, exista el usuario o no: si solo se verificara
+    # cuando existe, el tiempo de respuesta revelaria que usuarios hay
+    guardado = fila[1] if fila else auth.hashear("señuelo-para-igualar-tiempos")
+    if not auth.verificar(c.password, guardado) or not fila:
+        con.close()
+        raise HTTPException(401, "usuario o contraseña incorrectos")
+
+    token, hh = auth.nuevo_token()
+    cur.execute("DELETE FROM sessions WHERE expires_at < UTC_TIMESTAMP()")
+    cur.execute("INSERT INTO sessions (token_hash, user_id, expires_at) "
+                "VALUES (%s, %s, %s)", (hh, fila[0], auth.caduca_en()))
+    cur.execute("UPDATE users SET last_login = UTC_TIMESTAMP() WHERE id = %s",
+                (fila[0],))
+    con.commit(); con.close()
+
+    resp.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax",
+                    secure=auth.cookie_segura(request),
+                    max_age=auth.DIAS_SESION * 86400, path="/")
+    return {"username": c.username.strip(), "must_change_password": bool(fila[2])}
+
+
+@app.post("/auth/logout", summary="Cerrar sesion")
+def logout(resp: Response, scoutvec_session: str | None = Cookie(default=None)):
+    if scoutvec_session:
+        con = _con(); cur = con.cursor()
+        cur.execute("DELETE FROM sessions WHERE token_hash = %s",
+                    (auth.huella(scoutvec_session),))
+        con.commit(); con.close()
+    resp.delete_cookie(auth.COOKIE, path="/")
+    return {"status": "ok"}
+
+
+@app.get("/auth/me", response_model=Sesion, summary="Quien soy")
+def me(u=Depends(sesion_actual)):
+    return {"username": u["username"], "must_change_password": u["must_change"]}
+
+
+@app.post("/auth/change-password", response_model=Sesion,
+          summary="Cambiar contraseña")
+def change_password(c: CambioClave, resp: Response, request: Request,
+                    u=Depends(sesion_actual),
+                    scoutvec_session: str | None = Cookie(default=None)):
+    """Accesible con la clave temporal aun sin cambiar: es su unica salida."""
+    motivo = auth.politica(c.new_password)
+    if motivo:
+        raise HTTPException(422, motivo)
+    if c.new_password == c.current_password:
+        raise HTTPException(422, "la nueva contraseña debe ser distinta")
+
+    con = _con(); cur = con.cursor()
+    cur.execute("SELECT password_hash FROM users WHERE id = %s", (u["id"],))
+    guardado = cur.fetchone()[0]
+    if not auth.verificar(c.current_password, guardado):
+        con.close()
+        raise HTTPException(401, "la contraseña actual no es correcta")
+
+    cur.execute("UPDATE users SET password_hash = %s, must_change = 0 "
+                "WHERE id = %s", (auth.hashear(c.new_password), u["id"]))
+    # cambiar la clave invalida las demas sesiones: si alguien mas la tenia,
+    # se queda fuera
+    cur.execute("DELETE FROM sessions WHERE user_id = %s", (u["id"],))
+    token, hh = auth.nuevo_token()
+    cur.execute("INSERT INTO sessions (token_hash, user_id, expires_at) "
+                "VALUES (%s, %s, %s)", (hh, u["id"], auth.caduca_en()))
+    con.commit(); con.close()
+
+    resp.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax",
+                    secure=auth.cookie_segura(request),
+                    max_age=auth.DIAS_SESION * 86400, path="/")
+    return {"username": u["username"], "must_change_password": False}
+
+
 @app.get("/meta", summary="Vocabulario del espacio")
-def meta():
-    return {"features": FEATURES, **backend().meta()}
+def meta(dataset: str | None = None, _=Depends(usuario)):
+    slug = _dataset(dataset)
+    return {"features": FEATURES,
+            "dataset": slug,
+            "datasets": [{"slug": d.slug, "label": d.etiqueta,
+                          "season": d.temporada, "note": d.nota,
+                          "leagues": list(d.ligas)}
+                         for d in disponibles()],
+            **backend(slug).meta()}
 
 
 @app.get("/players", response_model=list[Jugador], summary="Listar y filtrar")
@@ -312,14 +481,16 @@ def players(q: str | None = Query(None, description="subcadena del nombre"),
             league: str | None = None, role: str | None = None,
             team: str | None = None,
             limit: int = Query(50, ge=1, le=500),
-            offset: int = Query(0, ge=0)):
+            offset: int = Query(0, ge=0),
+            dataset: str | None = None,
+            _=Depends(usuario)):
     _rol(role)
-    return backend().listar(q, league, role, team, limit, offset)
+    return backend(dataset).listar(q, league, role, team, limit, offset)
 
 
 @app.get("/players/{player_id}", response_model=Perfil, summary="Un jugador")
-def player(player_id: int):
-    return backend().perfil(player_id)
+def player(player_id: int, dataset: str | None = None, _=Depends(usuario)):
+    return backend(dataset).perfil(player_id)
 
 
 @app.get("/similar/{player_id}", response_model=list[Vecino],
@@ -327,8 +498,10 @@ def player(player_id: int):
 def similar(player_id: int, k: int = Query(8, ge=1, le=MAX_K),
             role: str | None = None,
             same_role: bool = Query(False, description="usa el rol del jugador"),
-            league: str | None = None):
-    b = backend()
+            league: str | None = None,
+            dataset: str | None = None,
+            _=Depends(usuario)):
+    b = backend(dataset)
     keep = _rol(role)
     if same_role and not keep:
         keep = {b.perfil(player_id)["role"]}
@@ -337,7 +510,8 @@ def similar(player_id: int, k: int = Query(8, ge=1, le=MAX_K),
 
 @app.post("/similar/target", response_model=list[Vecino],
           summary="Perfil a mano, sin jugador de referencia")
-def similar_target(o: Objetivo):
+def similar_target(o: Objetivo, dataset: str | None = None,
+                   _=Depends(usuario)):
     malas = set(o.profile) - set(FEATURES)
     if malas:
         raise HTTPException(422, f"metrica desconocida: {sorted(malas)}")
@@ -347,12 +521,12 @@ def similar_target(o: Objetivo):
     if fuera:
         raise HTTPException(422, f"el espacio son percentiles en [0,1]: {fuera}")
     vec = [o.profile.get(f, 0.5) for f in FEATURES]
-    return backend().objetivo(vec, o.k, _rol(o.role))
+    return backend(dataset).objetivo(vec, o.k, _rol(o.role))
 
 
 @app.post("/ask", response_model=Respuesta,
           summary="Consulta en lenguaje natural")
-def ask(p: Pregunta):
+def ask(p: Pregunta, dataset: str | None = None, _=Depends(usuario)):
     """El modelo traduce a consulta estructurada; la busqueda la ejecuta
     el mismo codigo determinista que el resto de la API."""
     from scoutvec import nl
@@ -363,23 +537,25 @@ def ask(p: Pregunta):
         raise HTTPException(422, "pregunta demasiado larga (max 500)")
 
     try:
-        q = nl.traducir(p.q)
+        q = nl.traducir(p.q, dataset=_dataset(dataset))
     except nl.SinClave as e:
         raise HTTPException(503, str(e))
     except Exception as e:                      # noqa: BLE001
         raise HTTPException(502, f"el traductor fallo: {type(e).__name__}: {e}")
 
     vec = [q["profile"][f] for f in FEATURES]
-    res = backend().objetivo(vec, q["k"], _rol(q["role"]), q["league"])
+    res = backend(dataset).objetivo(vec, q["k"], _rol(q["role"]), q["league"])
     return {"query": q, "results": res}
 
 
 @app.get("/compare", response_model=list[Perfil], summary="Perfiles lado a lado")
-def compare(ids: str = Query(description="player_id separados por coma")):
+def compare(ids: str = Query(description="player_id separados por coma"),
+            dataset: str | None = None, _=Depends(usuario)):
     try:
         pedidos = [int(x) for x in ids.split(",") if x.strip()]
     except ValueError:
         raise HTTPException(422, "ids debe ser una lista de enteros")
     if not 1 <= len(pedidos) <= 6:
         raise HTTPException(422, "entre 1 y 6 jugadores")
-    return [backend().perfil(p) for p in pedidos]
+    b = backend(dataset)
+    return [b.perfil(p) for p in pedidos]
