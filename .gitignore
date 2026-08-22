@@ -8,3 +8,6 @@ __pycache__/
 
 # credenciales locales; .env.example si se versiona
 .env
+
+# notas personales: nunca al repo
+*.local.md

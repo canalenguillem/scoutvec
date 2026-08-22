@@ -402,86 +402,10 @@ Known limitations to state openly in the README:
 Listing what the model *cannot* do reads as maturity. Most portfolios in this
 space oversell.
 
----
-
-## 6. Career context
-
-### 6.1 Constraint update
-
-Earlier planning assumed alternating-week custody as a hard limit on
-relocation. That assumption is out of date. Children are 22, 18, and turning
-17; the two eldest are effectively independent.
-
-This widens the option space considerably — relocation to another European
-city is now genuinely on the table rather than theoretically. It does not make
-the decision automatic. The youngest is 16 and currently in conflict with her
-mother, which is exactly the age and situation where physical proximity to the
-other parent can matter more, not less. That is a judgement call about the
-next 18 months specifically, not a permanent constraint, and it belongs in the
-decision — but it argues for *remote-first or short-haul* over *another
-continent*, rather than against moving at all.
-
-### 6.2 Where the money actually is
-
-Ranked roughly by compensation, not by prestige. Verify all figures — these
-are directional and the market moves.
-
-**Tier 1 — Betting and trading.** Smartodds, Starlizard, Bet365, Flutter,
-Sportradar's trading arm. These pay tech-market rates or above because they
-are quant shops that happen to model football. Highest ceiling by a wide
-margin. Mostly London-based, which means a UK Skilled Worker visa — real
-friction for an EU passport post-Brexit, though these firms sponsor routinely.
-
-**Tier 2 — Sports-tech vendors.** StatsBomb (Hudl), SkillCorner, Metrica
-Sports, Second Spectrum, Stats Perform, Zelus. Product companies with real
-engineering orgs, remote-friendly, and they hire *engineers* rather than
-analysts. **This is the best fit for a 25-year backend profile.** Kognia
-(Barcelona) and Driblab (Madrid) are the Spanish options — smaller, lower pay,
-but no relocation.
-
-**Tier 3 — Clubs.** Premier League clubs pay best (Liverpool, City, Brighton,
-Brentford, Arsenal all have real data departments). Red Bull group, Ajax,
-Benfica, Club Brugge also. But club salaries are generally *below* equivalent
-tech roles, the teams are small, hiring is rare, and the work skews toward
-serving coaching staff rather than building systems. Prestige is high;
-compensation is not.
-
-**Tier 4 — Spanish clubs.** Few positions, low pay, brutal competition.
-Barcelona specifically has an obvious financial situation. Treat as a
-long-shot narrative anchor for the project, not a plan.
-
-### 6.3 Strategic read
-
-The realistic path is **Tier 2, remote or short-haul**, not a club analyst
-role. Club roles require full physical presence, matchday weekends and travel
-— the worst possible fit — and pay less for it.
-
-`scoutvec` sells to all four tiers, which is why the project should stay
-club-agnostic. No crests, no club names in the repo. A project that reads as
-"I want to work at one specific club" costs you with the other five employers.
-
-Entry points worth tracking:
-
-- **"More than a Hack"** — Barça Innovation Hub + Metrica Sports, run at
-  Talent Arena during MWC Barcelona (March). Generative AI applied to real
-  FC Barcelona tracking and event data. The 2026 edition was the closest
-  thing to this exact profile written as an open call.
-- **Sports Tomorrow Congress** — BIHUB's annual congress, also at MWC in
-  March. Has historically run a research-paper competition.
-- **PySport open source** — kloppy, mplsoccer, socceraction. A merged PR is
-  worth more than fifty LinkedIn applications, because the maintainers and
-  the industry are the same people.
-
-### 6.4 On paid courses
-
-Not worth it here. 25 years of engineering plus StatsBomb's own documentation
-and Sumpter's *Soccermatics* covers the domain gap for free. What's missing
-isn't knowledge of xG — it's a finished, visible project. Money and hours go
-to Phase 2 through 7.
 
 ---
 
-## 7. Next session
+## 6. Next session
 
 All four items from the previous list are done: `similarity.py` as a module,
 `similar_role()`, target-vector search, and the four-league pipeline.
