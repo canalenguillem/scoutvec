@@ -327,6 +327,21 @@ but the frontend is reachable from outside.
 `vectors.parquet` into memory — the development path, and the reference the
 store-backed path is checked against.
 
+## What is not built
+
+**Visual evidence for a similarity.** Cosine over normalised vectors is a sum
+of seventeen terms, so the share each dimension contributes to a match is
+exact — Piqué and Umtiti are 13.4% aerials, 13.2% progressive passing, 12%
+clearances. The events behind those numbers are on disk with coordinates.
+Drawing them on a pitch would answer "show me why" with a picture. Not built
+yet; nothing blocks it.
+
+The original plan was video clips, and that is not buildable: StatsBomb open
+data ships no footage, there is no legal source for these leagues and seasons,
+and `minute` is match clock rather than playback time, so even with video the
+clips would need a sync offset open data does not provide. SoccerNet's
+research-access corpus is the legitimate route if it is ever worth pursuing.
+
 ## Layout
 
 ```

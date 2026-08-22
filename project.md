@@ -366,9 +366,32 @@ Phase 5 — Natural language layer                             [DONE]
   [x] 14 offline tests that need no API key and cost nothing
   [x] Plain-language box in the UI
 
-Phase 6 — Evidence clips
-  [ ] Similarity drivers → match events → timestamps → ffmpeg
-  [ ] The differentiator: nobody in this space ships video
+Phase 6 — Visual evidence
+  [ ] Decompose a similarity into per-dimension contributions (already works:
+      normalised vectors make cosine a sum of 17 terms, so the share each
+      dimension contributes is exact, not attributed)
+  [ ] Pull the events behind the top contributors — Piqué's 448 progressive
+      passes are in events.parquet with match, minute and both endpoints
+  [ ] Draw them on a pitch: two players' pass maps side by side, touch zones,
+      aerial duel locations
+  [ ] Answers "show me why these two are alike" with a picture instead of a
+      number, using only data already on disk
+
+  Video was the original plan and is not buildable. Written out rather than
+  deleted, because the reasoning is the useful part:
+
+  - StatsBomb open data ships no video, and there is no legal source of full
+    match footage for these leagues and seasons. Broadcast rights, not a
+    technical obstacle. Recording from a piracy aggregator would put a
+    compliance problem in a public repo aimed at an industry whose employers
+    license this footage.
+  - Even with video, `minute` is match clock, not playback time. Cutting an
+    accurate clip needs a per-half kickoff offset that open data does not
+    provide.
+  - The legitimate route exists: SoccerNet distributes several hundred full
+    broadcast matches under a research agreement, with annotations already in
+    video time, which solves the sync problem too. If that access ever
+    arrives, steps 1 and 2 above are unchanged and only the last one differs.
 
 Phase 7 — Ship                                               [DONE]
   [x] English README — result first, then method, then limitations
@@ -421,7 +444,19 @@ services and a seed step to do what a 550 KB file in memory already did.
 
 ## 5. Scope discipline
 
-Explicitly rejected: MariaDB, MongoDB, Redis, multi-service Docker Compose.
+Explicitly rejected: MongoDB, Redis. MariaDB and a multi-service compose were
+rejected here and then built anyway on an explicit decision — see §4.2, which
+records the trade-off rather than pretending the rule was never broken.
+
+Also rejected: **a betting model inside this repo.** Explored with real data
+before deciding. football-data.co.uk publishes results and opening/closing
+odds for 20 divisions back to 1993/94, updated as matchdays are played, and it
+is free and legitimate — but the closing line is calibrated to within a point
+of observed frequency across the bulk of matches (Brier 0.572 against 0.630
+for the base rate), and the house margin is 6.13%, so a model must be 5.8%
+sharper than the market merely to break even. Worth doing as its own project
+and a genuinely strong portfolio piece for a quant shop; worth keeping out of
+a scouting tool, which is a different question over different data.
 
 392 rows fit in a parquet file. Adding four datastores to a single-process
 tool that reads a local file is résumé-driven architecture, and technical
