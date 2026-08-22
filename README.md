@@ -27,16 +27,11 @@ they are Insigne, Ben Arfa and Papu Gómez. Because the vector is adjusted for
 team possession, the question it answers is *"who plays like this at a club that
 does not have 67% of the ball"*, which is the question a scout actually has.
 
-<!-- Screenshots. Start the stack (`docker compose up -d`), open
-     http://localhost:8090, then save two images into docs/ and delete this
-     comment along with the surrounding markers:
-
-       docs/radar.png  — a player selected and 3-4 neighbours added, chart view
-       docs/table.png  — the same comparison switched to table view
-
-![scoutvec comparing four players](docs/radar.png)
-![the same comparison as a table](docs/table.png)
--->
+<p align="center">
+  <img src="docs/ask.png" alt="Asking &quot;un central que saque el balón controlado&quot; and getting eight centre-backs back" width="46%">
+  &nbsp;
+  <img src="docs/radar.png" alt="Three centre-backs compared on the 17-axis percentile radar" width="46%">
+</p>
 
 ## What it does
 
