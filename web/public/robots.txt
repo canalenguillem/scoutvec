@@ -1,0 +1,8 @@
+# La aplicación entera vive detrás de un login: no hay nada que rastrear.
+# Se sirve como fichero real para que /robots.txt no devuelva el HTML de la
+# SPA, que es lo que hacía el fallback de nginx.
+User-agent: *
+Disallow: /api/
+Allow: /$
+
+Sitemap: https://scoutvec.enguillem.es/sitemap.xml
