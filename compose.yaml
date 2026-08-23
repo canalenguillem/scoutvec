@@ -63,6 +63,9 @@ services:
     volumes:
       - ./vectors_men-2015-16.parquet:/app/vectors_men-2015-16.parquet:ro
       - ./vectors_women-2023-24.parquet:/app/vectors_women-2023-24.parquet:ro
+      # los eventos solo los necesita /evidence, y no van en la imagen:
+      # son datos derivados que el pipeline regenera
+      - ./data:/app/data:ro
     environment:
       SCOUTVEC_BACKEND: stores
       MARIADB_HOST: mariadb

@@ -327,16 +327,15 @@ but the frontend is reachable from outside.
 `vectors.parquet` into memory — the development path, and the reference the
 store-backed path is checked against.
 
+- **Visual evidence** — pick any two players and see *why* they match. Cosine
+  over normalised vectors is a sum of seventeen terms, so each dimension's
+  share is exact rather than attributed: Piqué and Umtiti are 13.4% aerial
+  duels, 13.2% progressive passing, 12% clearances. Click a dimension and the
+  actual plays behind it are drawn on a pitch for both players, side by side.
+
 ## What is not built
 
-**Visual evidence for a similarity.** Cosine over normalised vectors is a sum
-of seventeen terms, so the share each dimension contributes to a match is
-exact — Piqué and Umtiti are 13.4% aerials, 13.2% progressive passing, 12%
-clearances. The events behind those numbers are on disk with coordinates.
-Drawing them on a pitch would answer "show me why" with a picture. Not built
-yet; nothing blocks it.
-
-The original plan was video clips, and that is not buildable: StatsBomb open
+The original plan for the evidence view was video clips, and that is not buildable: StatsBomb open
 data ships no footage, there is no legal source for these leagues and seasons,
 and `minute` is match clock rather than playback time, so even with video the
 clips would need a sync offset open data does not provide. SoccerNet's

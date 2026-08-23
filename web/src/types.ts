@@ -75,3 +75,28 @@ export interface Session {
   username: string
   must_change_password: boolean
 }
+
+export interface Driver {
+  feature: string
+  /** Fraccion exacta del coseno que aporta esta dimension. Suman 1. */
+  share: number
+  a: number
+  b: number
+  drawable: boolean
+}
+
+export interface PitchEvent {
+  x: number
+  y: number
+  end_x?: number
+  end_y?: number
+}
+
+export interface Evidence {
+  sim: number
+  drivers: Driver[]
+  feature: string | null
+  shape: 'flecha' | 'punto' | null
+  label: string | null
+  events: { a?: PitchEvent[]; b?: PitchEvent[] }
+}

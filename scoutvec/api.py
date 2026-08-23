@@ -597,6 +597,49 @@ def ask(p: Pregunta, dataset: str | None = None, _=Depends(usuario)):
     return {"query": q, "results": res}
 
 
+class Driver(BaseModel):
+    feature: str
+    share: float = Field(description="fraccion exacta del coseno que aporta")
+    a: float
+    b: float
+    drawable: bool
+
+
+class Evidencia(BaseModel):
+    sim: float
+    drivers: list[Driver]
+    feature: str | None = Field(description="dimension que ilustran los eventos")
+    shape: str | None = None
+    label: str | None = None
+    events: dict[str, list[dict[str, float]]] = {}
+
+
+@app.get("/evidence/{a_id}/{b_id}", response_model=Evidencia,
+         summary="Por que se parecen, en jugadas")
+def evidence(a_id: int, b_id: int, feature: str | None = None,
+             dataset: str | None = None, _=Depends(usuario)):
+    """Descompone el coseno y devuelve las jugadas de la dimension elegida.
+
+    La descomposicion es exacta: con vectores normalizados el coseno es la
+    suma de 17 productos, asi que el reparto no se estima.
+    """
+    from scoutvec import evidence as ev
+
+    slug = _dataset(dataset)
+    if feature is not None and feature not in ev.DIBUJO:
+        raise HTTPException(422, f"dimension {feature!r} no dibujable; "
+                                 f"validas: {sorted(ev.DIBUJO)}")
+    try:
+        return ev.comparar(a_id, b_id, slug, feature)
+    except ValueError:
+        raise HTTPException(404, "algun jugador no esta en este dataset")
+    except FileNotFoundError as e:
+        # el parquet de eventos no viaja en la imagen: son 59 MiB de datos
+        # derivados que se regeneran con el pipeline
+        raise HTTPException(503, f"faltan los eventos ({e}); ejecuta "
+                                 f"python -m scoutvec.ingest -d {slug}")
+
+
 @app.get("/compare", response_model=list[Perfil], summary="Perfiles lado a lado")
 def compare(ids: str = Query(description="player_id separados por coma"),
             dataset: str | None = None, _=Depends(usuario)):

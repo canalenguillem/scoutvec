@@ -366,16 +366,15 @@ Phase 5 — Natural language layer                             [DONE]
   [x] 14 offline tests that need no API key and cost nothing
   [x] Plain-language box in the UI
 
-Phase 6 — Visual evidence
-  [ ] Decompose a similarity into per-dimension contributions (already works:
-      normalised vectors make cosine a sum of 17 terms, so the share each
-      dimension contributes is exact, not attributed)
-  [ ] Pull the events behind the top contributors — Piqué's 448 progressive
-      passes are in events.parquet with match, minute and both endpoints
-  [ ] Draw them on a pitch: two players' pass maps side by side, touch zones,
-      aerial duel locations
-  [ ] Answers "show me why these two are alike" with a picture instead of a
-      number, using only data already on disk
+Phase 6 — Visual evidence                                    [DONE]
+  [x] Decompose a similarity into per-dimension contributions — exact, not
+      attributed: normalised vectors make cosine a sum of 17 terms, and the
+      shares are asserted to total 1.0
+  [x] Pull the events behind any contributor (evidence.py maps each dimension
+      to the polars filter that isolates its plays)
+  [x] Draw both players' events on a pitch, side by side, hand-written SVG
+  [x] Clickable: any drawable dimension can be inspected, not just the top one
+  [x] pitch-check.mjs verifies the geometry in SSR, like radar-check.mjs
 
   Video was the original plan and is not buildable. Written out rather than
   deleted, because the reasoning is the useful part:

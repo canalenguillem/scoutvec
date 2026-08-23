@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import Radar from './Radar'
-import { LABEL_FULL, NoAutenticado, ask, compare, getMeta, getSimilar,
-         logout, me, searchPlayers } from './api'
+import { LABEL_FULL, NoAutenticado, ask, compare, getEvidence, getMeta,
+         getSimilar, logout, me, searchPlayers } from './api'
+import Pitch from './Pitch'
 import { CambiarClave, Login } from './Auth'
 import { decidirSeleccion } from './select'
-import type { AskResponse, Meta, Neighbour, Player, Profile, Session } from './types'
+import type { AskResponse, Evidence, Meta, Neighbour, Player, Profile,
+              Session } from './types'
 
 // slots categoricos en orden fijo, nunca ciclados. Validados con
 // scripts/validate_palette.js en claro y oscuro.
@@ -47,6 +49,8 @@ function Explorer({ sesion, alSalir }:
   const [pregunta, setPregunta] = useState('')
   const [respuesta, setRespuesta] = useState<AskResponse | null>(null)
   const [pensando, setPensando] = useState(false)
+  const [evidencia, setEvidencia] = useState<Evidence | null>(null)
+  const [dimension, setDimension] = useState<string | null>(null)
   const panelRespuesta = useRef<HTMLElement | null>(null)
 
   // los resultados vienen de la consulta en lenguaje natural si la hay,
@@ -94,6 +98,18 @@ function Explorer({ sesion, alSalir }:
     if (!picked.length) { setProfiles([]); return }
     compare(picked, dataset).then(setProfiles).catch(fallo)
   }, [picked])
+
+  // la evidencia compara DOS jugadores: con uno no hay nada que explicar y
+  // con tres el mapa deja de leerse
+  useEffect(() => {
+    if (picked.length !== 2) { setEvidencia(null); return }
+    getEvidence(picked[0], picked[1], { feature: dimension ?? undefined, dataset })
+      .then(setEvidencia)
+      .catch(e => { if (e instanceof NoAutenticado) alSalir(); else setEvidencia(null) })
+  }, [picked, dimension, dataset])
+
+  // cambiar de pareja descarta la dimension elegida a mano
+  useEffect(() => { setDimension(null) }, [picked[0], picked[1]])
 
   function choose(p: Player) {
     setAnchor(p)
@@ -345,7 +361,46 @@ function Explorer({ sesion, alSalir }:
 
             <p className="muted small">
               Click any neighbour to add it to the comparison (up to {MAX_CMP}).
+              {picked.length !== 2 && ' Pick exactly two to see the evidence.'}
             </p>
+
+            {evidencia?.feature && profiles.length === 2 && (
+              <section className="evidence" aria-label="Evidence">
+                <div className="head">
+                  <h2>Why these two are alike</h2>
+                  <span className="muted small">
+                    cosine {evidencia.sim.toFixed(3)}
+                  </span>
+                </div>
+                <p className="muted small">
+                  The cosine is a sum of {meta.features.length} terms, so each
+                  dimension's share of the match is exact. Pick one to see the
+                  actual events behind it.
+                </p>
+                <ul className="drivers">
+                  {evidencia.drivers.filter(d => d.drawable).slice(0, 6).map(d => (
+                    <li key={d.feature}>
+                      <button type="button"
+                              className={d.feature === evidencia.feature ? 'chip on' : 'chip'}
+                              onClick={() => setDimension(d.feature)}>
+                        {LABEL_FULL[d.feature] ?? d.feature}
+                        {' '}<b>{Math.round(d.share * 100)}%</b>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="pitches">
+                  {profiles.map((p, n) => (
+                    <Pitch key={p.id}
+                           events={(n === 0 ? evidencia.events.a : evidencia.events.b) ?? []}
+                           shape={evidencia.shape ?? 'punto'}
+                           color={COLORS[n]} name={p.name}
+                           feature={evidencia.feature!}
+                           label={evidencia.label ?? ''} />
+                  ))}
+                </div>
+              </section>
+            )}
           </section>
         </div>
       )}

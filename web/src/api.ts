@@ -1,4 +1,5 @@
-import type { AskResponse, Meta, Neighbour, Player, Profile, Session, SimilarOpts } from './types'
+import type { AskResponse, Evidence, Meta, Neighbour, Player, Profile,
+              Session, SimilarOpts } from './types'
 
 const base = '/api'
 
@@ -84,6 +85,15 @@ export const getSimilar = (
   if (league) p.set('league', league)
   if (dataset) p.set('dataset', dataset)
   return get<Neighbour[]>(`/similar/${id}?${p}`)
+}
+
+export const getEvidence = (a: number, b: number,
+                            opts: { feature?: string; dataset?: string } = {}) => {
+  const p = new URLSearchParams()
+  if (opts.feature) p.set('feature', opts.feature)
+  if (opts.dataset) p.set('dataset', opts.dataset)
+  const qs = p.toString()
+  return get<Evidence>(`/evidence/${a}/${b}${qs ? `?${qs}` : ''}`)
 }
 
 export const compare = (ids: number[], dataset?: string) =>

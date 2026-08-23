@@ -254,3 +254,24 @@ td { font-variant-numeric: tabular-nums; }
   border: 1px solid var(--series-4); border-left-width: 3px;
   border-radius: 7px;
 }
+
+/* --- evidencia: las jugadas detras de una similitud --------------------- */
+.evidence { margin-top: 26px; border-top: 1px solid var(--border); padding-top: 16px; }
+.drivers { display: flex; flex-wrap: wrap; gap: 6px; list-style: none;
+           margin: 12px 0; padding: 0; }
+.drivers .chip { font-size: 12px; padding: 5px 10px; }
+.drivers b { font-variant-numeric: tabular-nums; }
+
+.pitches { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 720px) { .pitches { grid-template-columns: 1fr; } }
+.pitch-figure { margin: 0; }
+.pitch-title { font-size: 13px; display: flex; align-items: center; gap: 7px;
+               margin-bottom: 6px; }
+.pitch { width: 100%; height: auto; display: block;
+         background: var(--surface-1); border-radius: 6px; }
+/* el campo es contexto, no dato: recesivo */
+.pitch-lines rect, .pitch-lines circle, .pitch-lines line {
+  fill: none; stroke: var(--grid); stroke-width: 0.4;
+}
+.pitch-lines .pitch-spot { fill: var(--grid); stroke: none; }
+.pitch-note { margin: 5px 0 0; }
