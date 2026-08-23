@@ -47,6 +47,11 @@ does not have 67% of the ball"*, which is the question a scout actually has.
 - **Plain-language search** — *"un central que saque el balón jugado y gane de
   cabeza"* returns Laporte and Chiellini; *"a poacher who lives in the box and
   never defends"* returns the poachers. Ask in any language.
+- **Visual evidence** — pick any two players and see *why* they match. Cosine
+  over normalised vectors is a sum of seventeen terms, so each dimension's
+  share is exact rather than attributed: Piqué and Umtiti are 13.4% aerial
+  duels, 13.2% progressive passing, 12% clearances. Click a dimension and the
+  actual plays behind it are drawn on a pitch for both players, side by side.
 
 ### How the language layer stays honest
 
@@ -327,16 +332,10 @@ but the frontend is reachable from outside.
 `vectors.parquet` into memory — the development path, and the reference the
 store-backed path is checked against.
 
-- **Visual evidence** — pick any two players and see *why* they match. Cosine
-  over normalised vectors is a sum of seventeen terms, so each dimension's
-  share is exact rather than attributed: Piqué and Umtiti are 13.4% aerial
-  duels, 13.2% progressive passing, 12% clearances. Click a dimension and the
-  actual plays behind it are drawn on a pitch for both players, side by side.
-
 ## What is not built
 
-The original plan for the evidence view was video clips, and that is not buildable: StatsBomb open
-data ships no footage, there is no legal source for these leagues and seasons,
+The original plan for the evidence view was video clips, and that is not
+buildable: StatsBomb open data ships no footage, there is no legal source for these leagues and seasons,
 and `minute` is match clock rather than playback time, so even with video the
 clips would need a sync offset open data does not provide. SoccerNet's
 research-access corpus is the legitimate route if it is ever worth pursuing.
