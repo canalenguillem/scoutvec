@@ -49,9 +49,19 @@ does not have 67% of the ball"*, which is the question a scout actually has.
   never defends"* returns the poachers. Ask in any language.
 - **Visual evidence** — pick any two players and see *why* they match. Cosine
   over normalised vectors is a sum of seventeen terms, so each dimension's
-  share is exact rather than attributed: Piqué and Umtiti are 13.4% aerial
-  duels, 13.2% progressive passing, 12% clearances. Click a dimension and the
-  actual plays behind it are drawn on a pitch for both players, side by side.
+  share is exact rather than attributed. Click a dimension and the actual
+  plays behind it are drawn on a pitch for both players, side by side.
+
+Messi and Antonio Candreva sit at 0.984, and 15% of that comes from shooting:
+
+![Shots by Messi and Candreva, drawn on a pitch](docs/evidence-shots.png)
+
+The same pair on touches in the final third, which is where a single number
+stops being enough. Nearly identical vectors, and Messi works the middle and
+left while Candreva lives on the right touchline — the sort of thing a
+similarity score cannot tell you and a picture does immediately:
+
+![Final-third touches by Messi and Candreva](docs/evidence-touches.png)
 
 ### How the language layer stays honest
 
